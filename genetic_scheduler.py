@@ -55,7 +55,8 @@ class InputProcessor:
         print("Initializing data structures...")
         # Global Dictionary initialized by constructor
         self.GD = dict(
-            NUM_ITERATIONS=1000,
+            POPULATION=100,
+            NUM_ITERATIONS=100,
             GENE_SWAP_PCT=50,
             MUTATION_RATE=5,
             MUTATION_SEVERITY=10,
@@ -106,16 +107,29 @@ class InputProcessor:
                 course_key = row['*Course ID'] + "_" + row['*Section']
                 instructor_key = row['Instructor Jan/Dana ID']
                 room_key = row['Facility ID']
+                if course_key == '' or course_key == ' ':
+                    print("Skipping blank record from row ", row_num+1)
+                    continue
                 # Now store course information into DB, can't do this
                 # in a loop for each set of params because the id_num
                 # will be different for courses/rooms/profs
+                # TODO: error check here, see if already exists and diff
                 for c_param in self.GD['C_PARAMS']:
                     self.GD['C'][course_key][c_param] = [row[c_param]]
                 # store room information
+                if room_key == '' or room_key == ' ':
+                    print("Missing room info from row ", row_num + 1)
+                    continue
                 for r_param in self.GD['R_PARAMS']:
                     self.GD['R'][room_key][r_param] = [row[r_param]]
                 # store instructor information
+                if instructor_key == '' or instructor_key == ' ':
+                    print("Missing instructor info from row ", row_num + 1)
+                    continue
                 for i_param in self.GD['I_PARAMS']:
+                    if instructor_key == '':
+                        print("Missing", i_param, " from row ", row_num + 1)
+                        continue
                     self.GD['I'][instructor_key][i_param] = [row[i_param]]
                 row_num += 1
         print("Done preprocessing, found",
@@ -125,9 +139,9 @@ class InputProcessor:
     # Method for printing a single database/dict
     def print_database(self, param):
         print("Database: ", param)
-        for k in self.GD[param]:
-            for v in self.GD[param][k]:
-                print("[", k, "]: ", v)
+        for k1 in self.GD[param]:
+            for k2 in self.GD[param][k1]:
+                print("[", k1, "][", k2, "]:", self.GD[param][k1][k2])
 
     # Method for iterating over each the databases and printing them
     def print_databases(self):
@@ -136,43 +150,43 @@ class InputProcessor:
             print(">", param)
             self.print_database(param)
 
-    # Method to generate the random seed of solutions
 
 #######################################################################
 # Population processing class
 #######################################################################
 class Population:
+    # Method to generate the random seed of solutions
     def generate_random_solutions(self):
         print("Generating set of random solutions...")
         print("TODO")
 
     # Method to check feasibility of a solution
     def check_feasibility(self):
-        print("TODO")
+        print("TODO feasible")
 
     # Fitness function
     def fitness(self):
-        print("TODO")
-
-    # Mutation
-    def mutate(self):
-        print("TODO")
+        print("TODO fitness")
 
     # Crossover method
     def crossover(self):
-        print("TODO")
+        print("TODO crossover")
+
+    # Mutation
+    def mutate(self):
+        print("TODO mutate")
 
     # Culling method
     def cull_population(self):
-        print("TODO")
+        print("TODO cull")
 
     # Helper method to sort the population
     def sort_population(self):
-        print("TODO")
+        print("TODO sort")
 
     # Helper method to return the population in CSV format
     def return_population(self):
-        print("TODO")
+        print("TODO return")
 
 
 #######################################################################
