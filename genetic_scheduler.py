@@ -45,16 +45,18 @@ GD = dict(
     CSV_IN='Data/ScheduleOfClassesSample.csv',
     CSV_NUM_LINES=0,
     CSV_NUM_ERRORS=0,
-    INFO_LEVEL=3,  # see Helper.say()
+    COURSE_CONSTRAINTS='Data/CourseConstraints.csv',
+    INFO_LEVEL=1,  # see Helper.say()
     LOGFILE=open('run.log', 'w'),
     DB_PARAMS=["C", "I", "R", "S", "T"],
-    C=collections.defaultdict(lambda: collections.defaultdict()),
-    I=collections.defaultdict(lambda: collections.defaultdict()),
-    R=collections.defaultdict(lambda: collections.defaultdict()),
-    T=collections.defaultdict(lambda: collections.defaultdict()),
+    C=collections.defaultdict(lambda: collections.defaultdict()),  # courses
+    I=collections.defaultdict(lambda: collections.defaultdict()),  # instrctrs
+    R=collections.defaultdict(lambda: collections.defaultdict()),  # rooms
+    T=collections.defaultdict(lambda: collections.defaultdict()),  # times
     S=collections.defaultdict(lambda: collections.defaultdict(
         lambda: collections.defaultdict()
     )),
+    CC=collections.defaultdict(lambda: collections.defaultdict()),
     C_PARAMS=["Class Nbr",
               "*Section",
               "Class Description",
@@ -74,7 +76,15 @@ GD = dict(
               ],
     R_PARAMS=["Facility ID",
               "Wait List Cap",
-              ]
+              ],
+    CC_PARAMS=["Course",
+               "Section",
+               "Instructor",
+               "Room",
+               "Prereq",
+               "Coreq",
+               "Semester",
+               ]
 )
 
 # Hash for instructors can be simple:
@@ -143,7 +153,8 @@ class InputProcessor:
         H.say("INFO", "Initializing data structures...")
 
     # Process the input and build out the data structures
-    def process_input_from_solution(self):
+    @staticmethod
+    def process_input_from_solution():
         """
         Temporary method to build data structures based on sample solution,
         not sample input.
@@ -172,6 +183,9 @@ class InputProcessor:
                 # TODO: error check here, see if already exists and diff
                 for c_param in GD['C_PARAMS']:
                     GD['C'][course_key][c_param] = [row[c_param]]
+                GD['C'][course_key]['TimeSlotAssigned'] = "false"
+                GD['C'][course_key]['RoomAssigned'] = "false"
+                GD['C'][course_key]['InstructorAssigned'] = "false"
                 # store room information
                 if room_key == '' or room_key == ' ':
                     H.say("LOG", "Missing room info from row ", row_num+1)
@@ -198,7 +212,8 @@ class InputProcessor:
               GD['CSV_NUM_LINES'], " lines, ",
               GD['CSV_NUM_ERRORS'], " errors")
 
-    def process_schedule_constraints(self):
+    @staticmethod
+    def process_schedule_constraints():
         """
         Method to store which contains the valid dates/times
         that classes will be held and populate a hash. Could store
@@ -287,20 +302,38 @@ class InputProcessor:
     def process_course_constraints(self):
         """
         Method to open csv containing any special constraints
-        a course has, such as room it must be taught on, date/time
+        a course has, such as
+        - room it must be taught in
+        - instructor(s) [specify on separate lines in CSV]
+        - Prereq
+        - Coreq
+        - Semester taught (fall or spring or both)
         :return:
         """
-        print("TODO: pcc")
+        import csv
+        H.say("INFO", "Processing course constraints from CSV...")
+        row_num = 0
+        stored_params = 0
+        with open(
+                GD['COURSE_CONSTRAINTS'], newline='', encoding='utf-8'
+        ) as csv_in:
+            csv_data = csv.DictReader(csv_in, delimiter=',', quotechar='"')
+            for row in csv_data:
+                row_num += 1
+                for cc_param in GD['CC_PARAMS']:
+                    value = row[cc_param]
+                    if value != '':
+                        GD['CC'][cc_param] = value
+                        stored_params += 1
+        H.say("INFO","Done, stored ",
+              stored_params,
+              " constraints from ",
+              row_num,
+              " lines."
+              )
 
-    def process_instructor_constraints(self):
-        """
-        Method to open csv containing list of course an instructor
-        will teach for the semester
-        :return:
-        """
-        print("TODO: pic")
-
-    def print_database(self, param):
+    @staticmethod
+    def print_database(param):
         """
         Method for printing a single database/dict
         Assumes the database is only 2 levels deep
@@ -312,7 +345,8 @@ class InputProcessor:
             for k2 in GD[param][k1]:
                 H.say("LOG", "[", k1, "][", k2, "]:", GD[param][k1][k2])
 
-    def print_database_keys(self,param):
+    @staticmethod
+    def print_database_keys(param):
         """
         Method to print just the keys of a database to a CSV, using this
         to generate lists of each course, instructor, room, etc for
@@ -346,7 +380,8 @@ class InputProcessor:
             H.say("LOG", ">", param)
             self.print_database(param)
 
-    def print_sample_assignments(self):
+    @staticmethod
+    def print_sample_assignments():
         """
         Method for printing csv of each course/instructor assignment from
         the sample CSV
@@ -360,7 +395,7 @@ class InputProcessor:
             for y in GD['C'][key]["*Section"]:
                 print(y, file=file, end=',')
             for z in GD['C'][key]["Instructor Name"]:
-                print(z, file= file)
+                print(z, file=file)
 
 
 #######################################################################
@@ -417,16 +452,16 @@ class H:
             print(file=GD['LOGFILE'], end='\n')
 
     @staticmethod
-    def get_random_number(GD_hash_key):
+    def get_random_number(hash_key):
         """
         method to generate a random number that will be between 0 and
         the length of the hash that we will use the number to pull an
         element from
-        :param GD_hash_key:
+        :param hash_key:
         :return random_number:
         """
         import random
-        max_num = len(GD[GD_hash_key])
+        max_num = len(GD[hash_key])
         return random.randrange(0, max_num)
 
     #
@@ -441,7 +476,9 @@ class H:
         import sys
         counter = 0
         random = H.get_random_number(key)
+        e_id = ""  # for error message printing only
         for element_id in GD[key]:
+            e_id = element_id
             if counter == random:
                 if GD[key][element_id]['AlreadyAssigned'] == "true":
                     GD[key][element_id]['AlreadyAssigned'] = "true"
@@ -460,8 +497,8 @@ class H:
             "There aren't enough of one of the following:\n",
             "day/time slots, instructors, or rooms\n\n",
             "Was trying: \n",
-            element_id, ": ",
-            GD[key][element_id]['AlreadyAssigned']
+            e_id, ": ",
+            GD[key][e_id]['AlreadyAssigned']
         )
         sys.exit(2)
 
@@ -504,21 +541,24 @@ class Population:
                     = GD['C'][course]['Class Nbr']
                 GD['S'][rs_counter][course]['*Section'] \
                     = GD['C'][course]['*Section']
-                # time slot assignment
-                time = H.get_random_element('T')
-                GD['S'][rs_counter][course]['Start Time'] \
-                    = GD['T'][time]['Start Time']
-                GD['S'][rs_counter][course]['End Time'] \
-                    = GD['T'][time]['End Time']
-                GD['S'][rs_counter][course]['Time Slot'] = time
-                # instructor assignment
-                instructor = H.get_random_element('I')
-                GD['S'][rs_counter][course]['Instructor'] \
-                    = GD['I'][instructor]['Instructor Name']
-                # room assignment
-                room = H.get_random_element('R')
-                GD['S'][rs_counter][course]['Facility ID'] \
-                    = GD['R'][room]['Facility ID']
+                # time slot assignment, if not assigned by constraint
+                if GD['C'][course]['TimeSlotAssigned'] == 'false':
+                    time = H.get_random_element('T')
+                    GD['S'][rs_counter][course]['Start Time'] \
+                        = GD['T'][time]['Start Time']
+                    GD['S'][rs_counter][course]['End Time'] \
+                        = GD['T'][time]['End Time']
+                    GD['S'][rs_counter][course]['Time Slot'] = time
+                # instructor assignment, if not assigned by constraint
+                if GD['C'][course]['InstructorAssigned'] == 'false':
+                    instructor = H.get_random_element('I')
+                    GD['S'][rs_counter][course]['Instructor'] \
+                        = GD['I'][instructor]['Instructor Name']
+                # room assignment, if not assigned by constraint
+                if GD['C'][course]['RoomAssigned'] == 'false':
+                    room = H.get_random_element('R')
+                    GD['S'][rs_counter][course]['Facility ID'] \
+                        = GD['R'][room]['Facility ID']
             rs_counter += 1
 
     # Method to check feasibility of a solution
@@ -577,11 +617,11 @@ class Main:
     ip = InputProcessor()
     ip.process_input_from_solution()
     ip.process_schedule_constraints()
+    ip.process_course_constraints()
     ip.print_databases()
     ip.print_sample_assignments()
-    # TODO: remove this code
-    for p in GD['DB_PARAMS']:
-        ip.print_database_keys(p)
+    # for p in GD['DB_PARAMS']:
+    # ip.print_database_keys(p)
 
     # Initial randomly generated population seed, check
     population = Population()
