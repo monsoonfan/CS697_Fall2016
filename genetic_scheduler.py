@@ -13,7 +13,10 @@
 # Github:
 #
 # Issues:
-# Online classes have no room, now to deal with
+# - Online classes have no room, now to deal with
+# - T dict assumes all rooms are available for all time slots, might need
+#   a mechanism to block out rooms at certain days/times
+#
 #
 # Questions:
 # style - global dictionary of value, or pass values to each method
@@ -39,12 +42,12 @@ GD = dict(
     GENE_SWAP_PCT=50,
     MUTATION_RATE=5,
     MUTATION_SEVERITY=10,
-    CSV_IN='ScheduleOfClassesSample.csv',
+    CSV_IN='Data/ScheduleOfClassesSample.csv',
     CSV_NUM_LINES=0,
     CSV_NUM_ERRORS=0,
-    INFO_LEVEL=1,  # see Helper.say()
-    LOGFILE=open('run.log','w'),
-    DB_PARAMS=["C", "I", "R", "S"],
+    INFO_LEVEL=3,  # see Helper.say()
+    LOGFILE=open('run.log', 'w'),
+    DB_PARAMS=["C", "I", "R", "S", "T"],
     C=collections.defaultdict(lambda: collections.defaultdict()),
     I=collections.defaultdict(lambda: collections.defaultdict()),
     R=collections.defaultdict(lambda: collections.defaultdict()),
@@ -57,6 +60,7 @@ GD = dict(
               "Class Description",
               "Enrollment Cap",
               "Class Subject + Nbr",
+              "Instructor Name",
               ],
     I_PARAMS=["Instructor Name",
               "Instructor Email",
@@ -72,13 +76,6 @@ GD = dict(
               "Wait List Cap",
               ]
 )
-
-# Time and day slot hash - should this info be room based?
-# Or even course based, like labs will have diff meeting time/date
-# num - days
-#     - time
-#     - already_taken
-#     - details (like meets on M/T/.../F
 
 # Hash for instructors can be simple:
 # above info plus:
@@ -128,10 +125,20 @@ class InputProcessor:
            - room # (depends on class, room-to-class mapping of caps)
            - size
            - configuration (lab, type of desk, etc)
+           - already_taken?
+        T = Time and day slots
+           - days
+           - start time
+           - end time
+           - details (meets on M/T/.../F)
         S = Solutions
            - fitness of each solution
            - problem_solution
-
+        F = Fitness
+           - this could be a dict where the first key is the fitness
+             of the solution, and the solution is contained under the key
+             The effect is that it's sorted
+             Copy data into this as the population is culled
         """
         H.say("INFO", "Initializing data structures...")
 
@@ -167,10 +174,11 @@ class InputProcessor:
                     GD['C'][course_key][c_param] = [row[c_param]]
                 # store room information
                 if room_key == '' or room_key == ' ':
-                    H.say("LOG","Missing room info from row ", row_num + 1)
+                    H.say("LOG", "Missing room info from row ", row_num+1)
                     continue
                 for r_param in GD['R_PARAMS']:
                     GD['R'][room_key][r_param] = [row[r_param]]
+                GD['R'][room_key]['AlreadyAssigned'] = "false"
                 # store instructor information
                 if instructor_key == '' or instructor_key == ' ':
                     H.say("LOG", "Missing instructor info from row ",
@@ -184,24 +192,175 @@ class InputProcessor:
                               )
                         continue
                     GD['I'][instructor_key][i_param] = [row[i_param]]
+                GD['I'][instructor_key]['AlreadyAssigned'] = "false"
                 row_num += 1
         H.say("INFO", "Done pre-processing, found ",
               GD['CSV_NUM_LINES'], " lines, ",
               GD['CSV_NUM_ERRORS'], " errors")
 
-    # Method for printing a single database/dict
+    def process_schedule_constraints(self):
+        """
+        Method to store which contains the valid dates/times
+        that classes will be held and populate a hash. Could store
+        this info during input_processing, but having a separate method
+        makes for a more modular solution
+
+        This method uses the sample CSV as the set of constraints to
+        extract valid day/time combinations from.
+
+        For date/times - there is official NAU list of this somewhere, can
+        pull this in later if time but for now, just extract information
+        from the Sample
+
+        :return:
+        """
+        import csv
+
+        H.say("INFO", "Processing schedule constraints ...")
+        row_num = 0
+        # Iterate over the CSV and extract the information
+        with open(GD['CSV_IN'], newline='', encoding='utf-8') as csv_in:
+            csv_data = csv.DictReader(csv_in, delimiter=',', quotechar='"')
+            for row in csv_data:
+                time_slot_code = ''
+                has_a_day = 0
+                row_num += 1
+                # Pull the day information
+                if row['Meets on Monday'] == "Y":
+                    time_slot_code += "M"
+                    has_a_day += 1
+                if row['Meets on Tuesday'] == "Y":
+                    time_slot_code += "T"
+                    has_a_day += 1
+                if row['Meets on Wednesday'] == "Y":
+                    time_slot_code += "W"
+                    has_a_day += 1
+                if row['Meets on Thursday'] == "Y":
+                    time_slot_code += "Th"
+                    has_a_day += 1
+                if row['Meets on Friday'] == "Y":
+                    time_slot_code += "F"
+                    has_a_day += 1
+                # skip this row if no day assigned
+                if has_a_day == 0:
+                    H.say("LOG", "Warning, no days found in row ", row_num)
+                    continue
+
+                # Pull the time information
+                # start time
+                H.say("DBG", row_num, "<>", row['Start Time'])
+                fragments = row['Start Time'].split(' ')
+                try:
+                    start_time = fragments[1]
+                except:
+                    H.say("LOG", "Warning, no time in row ", row_num)
+                fragments = row['End Time'].split(' ')
+                # end time
+                try:
+                    end_time = fragments[1]
+                except:
+                    H.say("LOG", "Warning, no time in row ", row_num)
+                time_slot_code += "_" + start_time + "_" + end_time
+                H.say("DBG", time_slot_code)
+                
+                # Populate the time slot hash with needed info now
+                # that we have the key
+                GD['T'][time_slot_code]['Start Time'] = start_time
+                GD['T'][time_slot_code]['End Time'] = end_time
+                GD['T'][time_slot_code]['Meets on Monday'] = \
+                    row['Meets on Monday']
+                GD['T'][time_slot_code]['Meets on Tuesday'] = \
+                    row['Meets on Tuesday']
+                GD['T'][time_slot_code]['Meets on Wednesday'] = \
+                    row['Meets on Wednesday']
+                GD['T'][time_slot_code]['Meets on Thursday'] = \
+                    row['Meets on Thursday']
+                GD['T'][time_slot_code]['Meets on Friday'] = \
+                    row['Meets on Friday']
+                GD['T'][time_slot_code]['AlreadyAssigned'] = "false"
+        # Finished
+        H.say(
+            "INFO", "Done, created ", len(GD['T']),
+            " time slots from ", row_num, " lines"
+        )
+
+    def process_course_constraints(self):
+        """
+        Method to open csv containing any special constraints
+        a course has, such as room it must be taught on, date/time
+        :return:
+        """
+        print("TODO: pcc")
+
+    def process_instructor_constraints(self):
+        """
+        Method to open csv containing list of course an instructor
+        will teach for the semester
+        :return:
+        """
+        print("TODO: pic")
+
     def print_database(self, param):
+        """
+        Method for printing a single database/dict
+        Assumes the database is only 2 levels deep
+        :param param:
+        :return:
+        """
         H.say("LOG", "Database: ", param)
         for k1 in GD[param]:
             for k2 in GD[param][k1]:
                 H.say("LOG", "[", k1, "][", k2, "]:", GD[param][k1][k2])
 
-    # Method for iterating over each the databases and printing them
+    def print_database_keys(self,param):
+        """
+        Method to print just the keys of a database to a CSV, using this
+        to generate lists of each course, instructor, room, etc for
+        building the "constraints" CSVs. This is so simple, no need for
+        DictWriter on this one
+        :param param:
+        :return:
+        """
+        import sys
+
+        file_name = "keys_" + param + ".csv"
+        try:
+            file = open(file_name, 'w')
+            H.say("INFO", "Writing ", file_name, "...")
+        except PermissionError:
+            H.say("ERROR", file_name, " probably open")
+            sys.exit(2)
+        except:
+            print("ERROR", "Unknown error with ", file_name)
+        # print the data
+        for key in sorted(GD[param]):
+            print(key, file=file)
+
     def print_databases(self):
-        H.say("INFO","All databases: ")
+        """
+        Method for iterating over each of the databases and printing them
+        :return:
+        """
+        H.say("INFO", "All databases: ")
         for param in GD['DB_PARAMS']:
             H.say("LOG", ">", param)
             self.print_database(param)
+
+    def print_sample_assignments(self):
+        """
+        Method for printing csv of each course/instructor assignment from
+        the sample CSV
+        :return:
+        """
+        file_name = "sample_assignments.csv"
+        file = open(file_name, 'w')
+        for key in sorted(GD['C']):
+            for x in GD['C'][key]["Class Subject + Nbr"]:
+                print(x, file=file, end=',')
+            for y in GD['C'][key]["*Section"]:
+                print(y, file=file, end=',')
+            for z in GD['C'][key]["Instructor Name"]:
+                print(z, file= file)
 
 
 #######################################################################
@@ -238,7 +397,7 @@ class H:
                 print(k, file=GD['LOGFILE'], end=end_char)
                 printed_to_terminal += 1
                 printed_to_log += 1
-            if level == "VERBOSE" and GD['INFO_LEVEL'] >= 2:
+            if level == "VERBOSE" and GD['INFO_LEVEL'] == 2:
                 if k != "VERBOSE":
                     print(k, end=end_char)
                     printed_to_terminal += 1
@@ -249,6 +408,8 @@ class H:
                 if k != "LOG":
                     print(k, file=GD['LOGFILE'], end=end_char)
                     printed_to_log += 1
+            if level == "ERROR":
+                print(k, end=end_char)
             end_char = ''
         if printed_to_terminal > 0:
             print()
@@ -277,17 +438,32 @@ class H:
         :param key:
         :return: element
         """
+        import sys
         counter = 0
         random = H.get_random_number(key)
-        element = ""
         for element_id in GD[key]:
-            counter += 1
             if counter == random:
-                if key == "I":
-                    element = GD[key][element_id]['Instructor Jan/Dana ID']
-                if key == "R":
-                    element = GD[key][element_id]['Facility ID']
-        return element
+                if GD[key][element_id]['AlreadyAssigned'] == "true":
+                    GD[key][element_id]['AlreadyAssigned'] = "true"
+                    continue
+                else:
+                    return element_id
+            else:
+                counter += 1
+
+        # If we reach this point, a problem occurred, exit with info
+        H.say(
+            "ERROR",
+            "Not able to find a random element from ",
+            key, "\n",
+            "dict, this means all possibilities were already assigned\n",
+            "There aren't enough of one of the following:\n",
+            "day/time slots, instructors, or rooms\n\n",
+            "Was trying: \n",
+            element_id, ": ",
+            GD[key][element_id]['AlreadyAssigned']
+        )
+        sys.exit(2)
 
     @staticmethod
     def check_element_valid():
@@ -328,12 +504,21 @@ class Population:
                     = GD['C'][course]['Class Nbr']
                 GD['S'][rs_counter][course]['*Section'] \
                     = GD['C'][course]['*Section']
+                # time slot assignment
+                time = H.get_random_element('T')
+                GD['S'][rs_counter][course]['Start Time'] \
+                    = GD['T'][time]['Start Time']
+                GD['S'][rs_counter][course]['End Time'] \
+                    = GD['T'][time]['End Time']
+                GD['S'][rs_counter][course]['Time Slot'] = time
                 # instructor assignment
+                instructor = H.get_random_element('I')
                 GD['S'][rs_counter][course]['Instructor'] \
-                    = H.get_random_element('I')
+                    = GD['I'][instructor]['Instructor Name']
                 # room assignment
+                room = H.get_random_element('R')
                 GD['S'][rs_counter][course]['Facility ID'] \
-                    = H.get_random_element('R')
+                    = GD['R'][room]['Facility ID']
             rs_counter += 1
 
     # Method to check feasibility of a solution
@@ -346,7 +531,6 @@ class Population:
         # Ideas for checking fitness:
         # Create a hash (even a mutating one?) that has the lookup
         # of values for the function
-
 
     # Crossover method
     def crossover(self):
@@ -364,13 +548,19 @@ class Population:
     def sort_population(self):
         print("TODO sort")
 
-    # Helper method to return the population in CSV format
     def return_population(self):
-        print("Returning top", GD['NUM_SOLUTIONS_TO_RETURN'], "solutions...")
+        """
+        Helper method to return the top n solutions in CSV format
+        :return:
+        """
+        H.say("INFO", "Returning top ", GD['NUM_SOLUTIONS_TO_RETURN'],
+              " solutions...")
         for s in GD['S']:
+            print(s)
             for c in GD['S'][s]:
-                H.say("VERBOSE", "C:", GD['S'][s][c]['Class Subject + Nbr'],
+                H.say("LOG", "C:", GD['S'][s][c]['Class Subject + Nbr'],
                       GD['S'][s][c]['*Section'],
+                      " ", "T:", GD['S'][s][c]['Time Slot'],
                       " ", "I:", GD['S'][s][c]['Instructor'],
                       " ", "R:", GD['S'][s][c]['Facility ID']
                       )
@@ -386,7 +576,12 @@ class Main:
     # Process the input and build the DBs
     ip = InputProcessor()
     ip.process_input_from_solution()
+    ip.process_schedule_constraints()
     ip.print_databases()
+    ip.print_sample_assignments()
+    # TODO: remove this code
+    for p in GD['DB_PARAMS']:
+        ip.print_database_keys(p)
 
     # Initial randomly generated population seed, check
     population = Population()
