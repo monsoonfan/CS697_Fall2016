@@ -49,6 +49,7 @@ GD = dict(
     CSV_NUM_LINES=0,
     CSV_NUM_ERRORS=0,
     COURSE_CONSTRAINTS='Data/CourseConstraints.csv',
+    FITNESS_CONSTRAINTS='Data/FitnessConstraints.csv',
     INFO_LEVEL=1,  # see Helper.say()
     LOGFILE=open('run.log', 'w'),
     DB_PARAMS=["C", "I", "R", "S", "T"],
@@ -60,6 +61,7 @@ GD = dict(
         lambda: collections.defaultdict()
     )),
     CC=collections.defaultdict(lambda: collections.defaultdict()),
+    F=collections.defaultdict(lambda: collections.defaultdict()),
     C_PARAMS=["Class Nbr",
               "*Section",
               "Class Description",
@@ -87,7 +89,10 @@ GD = dict(
                "Prereq",
                "Coreq",
                "Semester",
-               ]
+               ],
+    F_PARAMS=["Condition",
+              "Penalty",
+              ]
 )
 
 # Hash for instructors can be simple:
@@ -286,7 +291,8 @@ class InputProcessor:
             " time slots from ", row_num, " lines"
         )
 
-    def process_course_constraints(self):
+    @staticmethod
+    def process_csv_constraints(csv_file, param):
         """
         Method to open csv containing any special constraints
         a course has, such as
@@ -301,18 +307,23 @@ class InputProcessor:
         H.say("INFO", "Processing course constraints from CSV...")
         row_num = 0
         stored_params = 0
+        key_param = ""
+        if param == 'CC_PARAMS':
+            key_param = 'CC'
+        if param == 'F_PARAMS':
+            key_param = 'F'
         with open(
-                GD['COURSE_CONSTRAINTS'], newline='', encoding='utf-8'
+                csv_file, newline='', encoding='utf-8'
         ) as csv_in:
             csv_data = csv.DictReader(csv_in, delimiter=',', quotechar='"')
             for row in csv_data:
-                for cc_param in GD['CC_PARAMS']:
-                    value = row[cc_param]
+                for csv_param in GD[param]:
+                    value = row[csv_param]
                     if value != '':
-                        GD['CC'][row_num][cc_param] = value
+                        GD[key_param][row_num][csv_param] = value
                         stored_params += 1
                 row_num += 1
-        H.say("INFO","Done, stored ",
+        H.say("INFO", "Done, stored ",
               stored_params,
               " constraints from ",
               row_num,
@@ -364,7 +375,7 @@ class InputProcessor:
         Method for iterating over each of the databases and printing them
         :return:
         """
-        H.say("INFO", "All databases: ")
+        H.say("LOG", "All databases: ")
         for param in GD['DB_PARAMS']:
             H.say("LOG", ">", param)
             self.print_database(param)
@@ -625,7 +636,7 @@ class Population:
         - professor workload (like how many people a class has, but not yet)
         :return:
         """
-        print("Evaluating fitness...")
+        H.say("INFO", "Evaluating fitness...")
         # Ideas for checking fitness:
         # Create a hash (even a mutating one?) that has the lookup
         # of values for the function
@@ -675,7 +686,8 @@ class Main:
     ip = InputProcessor()
     ip.process_input_from_solution()
     ip.process_schedule_constraints()
-    ip.process_course_constraints()
+    ip.process_csv_constraints(GD['COURSE_CONSTRAINTS'], "CC_PARAMS")
+    ip.process_csv_constraints(GD['FITNESS_CONSTRAINTS'], "F_PARAMS")
     ip.print_databases()
     ip.print_sample_assignments()
 
