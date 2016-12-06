@@ -17,7 +17,6 @@
 # - T dict assumes all rooms are available for all time slots, might need
 #   a mechanism to block out rooms at certain days/times
 #
-#
 # Questions:
 # style - global dictionary of value, or pass values to each method
 #         code seems more concise and easier to read/manipulate with
@@ -33,6 +32,10 @@ import collections
 
 #######################################################################
 # Global variables
+#
+# Heads up with default dict, when process_input_from_solution runs,the
+# values are stored as lists, so you'll see [''] around the actual
+# value, have to reference the 0th element of the list to get value
 #######################################################################
 GD = dict(
     POPULATION=100,
@@ -50,7 +53,7 @@ GD = dict(
     LOGFILE=open('run.log', 'w'),
     DB_PARAMS=["C", "I", "R", "S", "T"],
     C=collections.defaultdict(lambda: collections.defaultdict()),  # courses
-    I=collections.defaultdict(lambda: collections.defaultdict()),  # instrctrs
+    I=collections.defaultdict(lambda: collections.defaultdict()),
     R=collections.defaultdict(lambda: collections.defaultdict()),  # rooms
     T=collections.defaultdict(lambda: collections.defaultdict()),  # times
     S=collections.defaultdict(lambda: collections.defaultdict(
@@ -91,22 +94,6 @@ GD = dict(
 # above info plus:
 #     - building_of_office
 #     - courses taught hash
-
-# Fitness parameter hash details (could have multiple ways to configure)
-#     - professor proximity of chosen room to department
-#     - course proximity of chosen room to department
-#     - what days professor is teach
-#     - penalty for time of day, but a light penalty
-#     - class/prereq
-#     - class/coreg
-#
-#     - degree progression (need 2 spreadsheets that don't exist)
-#       first one has class/prereq (this means you can teach)
-#       another one has class/coreq
-#     - number of classes taught by professor (hard constraint)
-#     - no room/date/time/instructor conflicts (depends on how detailed
-#                                               the solution generator is)
-#     - professor workload (like how many people a class has, but not now)
 
 
 #######################################################################
@@ -319,12 +306,12 @@ class InputProcessor:
         ) as csv_in:
             csv_data = csv.DictReader(csv_in, delimiter=',', quotechar='"')
             for row in csv_data:
-                row_num += 1
                 for cc_param in GD['CC_PARAMS']:
                     value = row[cc_param]
                     if value != '':
-                        GD['CC'][cc_param] = value
+                        GD['CC'][row_num][cc_param] = value
                         stored_params += 1
+                row_num += 1
         H.say("INFO","Done, stored ",
               stored_params,
               " constraints from ",
@@ -343,7 +330,9 @@ class InputProcessor:
         H.say("LOG", "Database: ", param)
         for k1 in GD[param]:
             for k2 in GD[param][k1]:
-                H.say("LOG", "[", k1, "][", k2, "]:", GD[param][k1][k2])
+                #TODO: load regexp module and skip all assigned
+                if k2 != "AlreadyAssigned":
+                    H.say("LOG", "[", k1, "][", k2, "]:", GD[param][k1][k2])
 
     @staticmethod
     def print_database_keys(param):
@@ -439,6 +428,9 @@ class H:
             if level == "DBG" and GD['INFO_LEVEL'] >= 3:
                 print(k, end=end_char)
                 printed_to_terminal += 1
+            if level == "DBG1" and GD['INFO_LEVEL'] >= 1:
+                print(k, end=end_char)
+                printed_to_terminal += 1
             if level == "LOG":
                 if k != "LOG":
                     print(k, file=GD['LOGFILE'], end=end_char)
@@ -508,9 +500,45 @@ class H:
         if element_valid == 1:
             return
 
+    @staticmethod
+    def make_forced_assignment(course, type, key):
+        """
+        Helper method to generate_random_solutions, this one takes a key
+        from the GD['C'] courses hash and a type of assignment ('I', 'R', etc)
+        and makes a forced assignment if one needs to be made so that it's
+        not randomly generated
+
+        :return:
+        """
+        H.say("VERBOSE", "Making forced assignment...")
+        forced = 0
+        for cc_key in GD['CC']:
+            cc_course = GD['CC'][cc_key]['Course']
+            cc_section = GD['CC'][cc_key]['Section']
+            c_course = GD['C'][course]['Class Subject + Nbr'][0]
+            c_section = GD['C'][course]['*Section'][0]
+            if cc_course == c_course and cc_section == c_section:
+                forced += 1
+                H.say("VERBOSE", "Making forced (", type,
+                      ") assignment for:\n",
+                      c_course, " section ", c_section
+                      )
+                if type == "I":
+                    GD['S'][key][course]['Instructor'] \
+                        = GD['CC'][cc_key]['Instructor']
+                    GD['C'][course]['InstructorAssigned'] = "true"
+                if type == "R":
+                    GD['S'][key][course]['Facility ID'] \
+                        = GD['CC'][cc_key]['Room']
+                    GD['C'][course]['RoomAssigned'] = "true"
+                # May need to support day/time assignment as well
 
 #######################################################################
 # Population processing class
+#
+# The methods in this class operate by way of "assignment" principle. The
+# code is trying to make assignments for room, instructor, time slot, etc..
+# There are forced assignments and randomly generated ones.
 #######################################################################
 class Population:
     global GD
@@ -530,6 +558,7 @@ class Population:
         :return:
         """
         H.say("INFO", "Generating set of random solutions...")
+        # Make assignments randomly unless assignment was already made
         rs_counter = 0
         while rs_counter < GD['NUM_SOLUTIONS_TO_TRY']:
             # course assignment
@@ -550,11 +579,17 @@ class Population:
                         = GD['T'][time]['End Time']
                     GD['S'][rs_counter][course]['Time Slot'] = time
                 # instructor assignment, if not assigned by constraint
+                # TODO: have to check if instructor is not already teaching
+                # TODO: at that time (like TTh 12:25 overlapping T 1pm)
+                H.make_forced_assignment(course, "I", rs_counter)
                 if GD['C'][course]['InstructorAssigned'] == 'false':
                     instructor = H.get_random_element('I')
                     GD['S'][rs_counter][course]['Instructor'] \
                         = GD['I'][instructor]['Instructor Name']
                 # room assignment, if not assigned by constraint
+                # TODO: have to check if room is not already occupied by funky
+                # TODO: constraint (like TTh 12:25 overlapping T 1pm)
+                H.make_forced_assignment(course, "R", rs_counter)
                 if GD['C'][course]['RoomAssigned'] == 'false':
                     room = H.get_random_element('R')
                     GD['S'][rs_counter][course]['Facility ID'] \
@@ -562,11 +597,34 @@ class Population:
             rs_counter += 1
 
     # Method to check feasibility of a solution
+    # Might be able to skip this one if assignments are made as feasible
     def check_feasibility(self):
         print("TODO feasible")
 
     # Fitness function
     def fitness(self):
+        """
+        Method for evaluating the fitness of a given solution
+
+        Scratch pad of ideas
+        --------------------
+        Fitness parameter hash details (could have multiple ways to configure)
+        - professor proximity of chosen room to department
+        - course proximity of chosen room to department
+        - what days professor is teach
+        - penalty for time of day, but a light penalty
+        - class/prereq
+        - class/coreg
+
+        - degree progression (need 2 spreadsheets that don't exist)
+          first one has class/prereq (this means you can teach)
+          another one has class/coreq
+        - number of classes taught by professor (hard constraint)
+        - no room/date/time/instructor conflicts (depends on how detailed
+          the solution generator is)
+        - professor workload (like how many people a class has, but not yet)
+        :return:
+        """
         print("Evaluating fitness...")
         # Ideas for checking fitness:
         # Create a hash (even a mutating one?) that has the lookup
@@ -620,8 +678,6 @@ class Main:
     ip.process_course_constraints()
     ip.print_databases()
     ip.print_sample_assignments()
-    # for p in GD['DB_PARAMS']:
-    # ip.print_database_keys(p)
 
     # Initial randomly generated population seed, check
     population = Population()
