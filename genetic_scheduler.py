@@ -351,7 +351,7 @@ class InputProcessor:
                         if base_key == 'CC':
                             GD[base_key][row_num][csv_param] = value
                         else:
-                            print("storing ", value, " under",
+                            H.say("VERBOSE", "storing ", value, " under",
                                   "[", base_key, "]",
                                   "[", i_key, "]"
                                   "[", csv_param, "]",
@@ -623,9 +623,9 @@ class H:
     def get_id(instructor_name):
         try:
             for key in GD['I']:
-                H.say("DBG1", "key: ", key, " against: ", instructor_name)
+                H.say("DBG", "key: ", key, " against: ", instructor_name)
                 if GD['I'][key]['Instructor Name'][0] == instructor_name:
-                    H.say("DBG1", "returning: ", key)
+                    H.say("DBG", "returning: ", key)
                     return key
         except:
             H.say("ERROR", "Trying to get Jan/Dana ID for instructor\n",
@@ -687,7 +687,6 @@ class Population:
                     instructor = H.get_random_element('I')
                 else:
                     instructor = GD['S'][rs_counter][course]['Instructor']
-                H.say("DBG1", "inst key: ", instructor)
                 GD['S'][rs_counter][course]['Instructor'] \
                     = GD['I'][instructor]['Instructor Name']
                 GD['S'][rs_counter][course]['Instructor Building'] \
@@ -744,13 +743,9 @@ class Population:
         score = GD['HIGH_SCORE']
         for s in GD['S']:
             for c in GD['S'][s]:
-                H.say("DBG1", GD['S'][s][c]['Instructor'])
-                H.say("DBG1", s, " c=", c)
-                H.say("DBG1", GD['S'][s][c]['Instructor Building'])
                 if GD['S'][s][c]['Instructor Building'] \
                         != GD['S'][s][c]['Building']:
                     penalty = GD['FC']['Instructor Proximity']['Penalty']
-                    print("DBG: got penalty ", penalty)
                     score = score - int(penalty)
 
     # Crossover method
