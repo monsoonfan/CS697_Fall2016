@@ -1,0 +1,9 @@
+Condition,Penalty,,Notes
+Instructor Proximity,50,,professor proximity of chosen room to department
+Room Proximity,20,,course proximity of chosen room to department
+Instructor Days Taught,35,,what days professor is teaching
+Time of day,10,,"penalty for time of day, but a light penalty"
+Prereq,25,,class/prereq
+Coreq,25,,class coreq
+,,,
+,,,degree progression
