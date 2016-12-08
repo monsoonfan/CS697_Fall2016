@@ -50,9 +50,13 @@ GD = dict(
     CSV_NUM_ERRORS=0,
     COURSE_CONSTRAINTS='Data/CourseConstraints.csv',
     FITNESS_CONSTRAINTS='Data/FitnessConstraints.csv',
+    ROOM_CONSTRAINTS='Data/RoomConstraints.csv',
+    INSTRUCTOR_CONSTRAINTS='Data/InstructorConstraints.csv',
+    HIGH_SCORE=1000,
     INFO_LEVEL=1,  # see Helper.say()
     LOGFILE=open('run.log', 'w'),
-    DB_PARAMS=["C", "I", "R", "S", "T"],
+    DB_2LEVEL_PARAMS=["C", "I", "R", "S", "T", "CC"],
+    DB_1LEVEL_PARAMS=["FC", "RC", "IC"],
     C=collections.defaultdict(lambda: collections.defaultdict()),  # courses
     I=collections.defaultdict(lambda: collections.defaultdict()),
     R=collections.defaultdict(lambda: collections.defaultdict()),  # rooms
@@ -61,11 +65,14 @@ GD = dict(
         lambda: collections.defaultdict()
     )),
     CC=collections.defaultdict(lambda: collections.defaultdict()),
-    F=collections.defaultdict(lambda: collections.defaultdict()),
+    FC=collections.defaultdict(lambda: collections.defaultdict()),
+    RC=collections.defaultdict(lambda: collections.defaultdict()),
+    IC=collections.defaultdict(lambda: collections.defaultdict()),
     C_PARAMS=["Class Nbr",
               "*Section",
               "Class Description",
               "Enrollment Cap",
+              "Enrollment Total",
               "Class Subject + Nbr",
               "Instructor Name",
               ],
@@ -90,9 +97,19 @@ GD = dict(
                "Coreq",
                "Semester",
                ],
-    F_PARAMS=["Condition",
+    FC_PARAMS=[#"Condition",
               "Penalty",
-              ]
+              ],
+    RC_PARAMS=[#"Room",
+               "Building",
+               "Capacity",
+               "Labs Supported",
+               ],
+    IC_PARAMS=[#"Instructor Jan/Dana ID",
+               "Instructor Name",
+               "Instructor Emplid",
+               "Building",
+    ]
 )
 
 # Hash for instructors can be simple:
@@ -294,7 +311,7 @@ class InputProcessor:
     @staticmethod
     def process_csv_constraints(csv_file, param):
         """
-        Method to open csv containing any special constraints
+        Generic method to open csv containing any special constraints
         a course has, such as
         - room it must be taught in
         - instructor(s) [specify on separate lines in CSV]
@@ -304,23 +321,42 @@ class InputProcessor:
         :return:
         """
         import csv
-        H.say("INFO", "Processing course constraints from CSV...")
+        H.say("INFO", "Processing ", csv_file, "...")
         row_num = 0
         stored_params = 0
-        key_param = ""
+        base_key = ""
+        item_key = ""
         if param == 'CC_PARAMS':
-            key_param = 'CC'
-        if param == 'F_PARAMS':
-            key_param = 'F'
-        with open(
-                csv_file, newline='', encoding='utf-8'
-        ) as csv_in:
+            base_key = 'CC'
+            item_key = 'Course'  # do nothing in this case
+        if param == 'FC_PARAMS':
+            base_key = 'FC'
+            item_key = 'Condition'
+        if param == 'RC_PARAMS':
+            base_key = 'RC'
+            item_key = 'Room'
+        if param == 'IC_PARAMS':
+            base_key = 'IC'
+            item_key = 'Instructor Jan/Dana ID'
+        with open(csv_file, newline='', encoding='utf-8') as csv_in:
             csv_data = csv.DictReader(csv_in, delimiter=',', quotechar='"')
             for row in csv_data:
                 for csv_param in GD[param]:
+                    i_key = row[item_key]
                     value = row[csv_param]
                     if value != '':
-                        GD[key_param][row_num][csv_param] = value
+                        # create mechanism to allow for direct access to
+                        # make it easier to directly pull values later for
+                        # ones that don't need to have a random unique key
+                        if base_key == 'CC':
+                            GD[base_key][row_num][csv_param] = value
+                        else:
+                            print("storing ", value, " under",
+                                  "[", base_key, "]",
+                                  "[", i_key, "]"
+                                  "[", csv_param, "]",
+                                  )
+                            GD[base_key][i_key][csv_param] = value
                         stored_params += 1
                 row_num += 1
         H.say("INFO", "Done, stored ",
@@ -331,7 +367,19 @@ class InputProcessor:
               )
 
     @staticmethod
-    def print_database(param):
+    def print_database_1level(param):
+        """
+        Method for printing a single database/dict
+        Assumes the database is only 2 levels deep
+        :param param:
+        :return:
+        """
+        H.say("LOG", "Database: ", param)
+        for k1 in GD[param]:
+            H.say("LOG", "[", k1, "]:", GD[param][k1])
+
+    @staticmethod
+    def print_database_2level(param):
         """
         Method for printing a single database/dict
         Assumes the database is only 2 levels deep
@@ -375,10 +423,15 @@ class InputProcessor:
         Method for iterating over each of the databases and printing them
         :return:
         """
-        H.say("LOG", "All databases: ")
-        for param in GD['DB_PARAMS']:
-            H.say("LOG", ">", param)
-            self.print_database(param)
+        H.say("LOG", "All 2-level databases: ")
+        for param2 in GD['DB_2LEVEL_PARAMS']:
+            H.say("LOG", ">", param2)
+            self.print_database_2level(param2)
+
+        H.say("LOG", "All 1-level databases: ")
+        for param1 in GD['DB_1LEVEL_PARAMS']:
+            H.say("LOG", ">", param1)
+            self.print_database_1level(param1)
 
     @staticmethod
     def print_sample_assignments():
@@ -397,8 +450,30 @@ class InputProcessor:
             for z in GD['C'][key]["Instructor Name"]:
                 print(z, file=file)
 
+    @staticmethod
+    def print_instructor_info():
+        """
+        Helper method to print all info that's in the I dict to csv
+        :return:
+        """
+        file_name = "instructor_info.csv"
+        file = open(file_name, 'w')
+        print("Instructor Jan/Dana ID", file=file, end=',')
+        print("Instructor Name", file=file, end=',')
+        print("Instructor Department", file=file, end=',')
+        print("College", file=file, end=',')
+        print("Instructor Emplid", file=file)
+        for key in sorted(GD['I']):
+            print(GD['I'][key]["Instructor Jan/Dana ID"][0], file=file, end=',')
+            print('"', GD['I'][key]["Instructor Name"][0], '"', file=file, end=',')
+            print(GD['I'][key]["Instructor Department"][0], file=file, end=',')
+            print(GD['I'][key]["College"][0], file=file, end=',')
+            print(GD['I'][key]["Instructor Emplid"][0], file=file)
 
-#######################################################################
+
+
+
+            #######################################################################
 # Helper methods class
 # H = "Helper", shortened to H for length of line considerations
 #######################################################################
@@ -536,13 +611,27 @@ class H:
                       )
                 if type == "I":
                     GD['S'][key][course]['Instructor'] \
-                        = GD['CC'][cc_key]['Instructor']
+                        = H.get_id(GD['CC'][cc_key]['Instructor'])
                     GD['C'][course]['InstructorAssigned'] = "true"
                 if type == "R":
-                    GD['S'][key][course]['Facility ID'] \
+                    GD['S'][key][course]['Room'] \
                         = GD['CC'][cc_key]['Room']
                     GD['C'][course]['RoomAssigned'] = "true"
                 # May need to support day/time assignment as well
+
+    @staticmethod
+    def get_id(instructor_name):
+        try:
+            for key in GD['I']:
+                H.say("DBG1", "key: ", key, " against: ", instructor_name)
+                if GD['I'][key]['Instructor Name'][0] == instructor_name:
+                    H.say("DBG1", "returning: ", key)
+                    return key
+        except:
+            H.say("ERROR", "Trying to get Jan/Dana ID for instructor\n",
+                  instructor_name,
+                  " but could not find one.")
+
 
 #######################################################################
 # Population processing class
@@ -593,19 +682,30 @@ class Population:
                 # TODO: have to check if instructor is not already teaching
                 # TODO: at that time (like TTh 12:25 overlapping T 1pm)
                 H.make_forced_assignment(course, "I", rs_counter)
+                instructor = ""
                 if GD['C'][course]['InstructorAssigned'] == 'false':
                     instructor = H.get_random_element('I')
-                    GD['S'][rs_counter][course]['Instructor'] \
-                        = GD['I'][instructor]['Instructor Name']
+                else:
+                    instructor = GD['S'][rs_counter][course]['Instructor']
+                H.say("DBG1", "inst key: ", instructor)
+                GD['S'][rs_counter][course]['Instructor'] \
+                    = GD['I'][instructor]['Instructor Name']
+                GD['S'][rs_counter][course]['Instructor Building'] \
+                    = GD['IC'][instructor]['Building']
                 # room assignment, if not assigned by constraint
                 # TODO: have to check if room is not already occupied by funky
                 # TODO: constraint (like TTh 12:25 overlapping T 1pm)
                 H.make_forced_assignment(course, "R", rs_counter)
                 if GD['C'][course]['RoomAssigned'] == 'false':
                     room = H.get_random_element('R')
-                    GD['S'][rs_counter][course]['Facility ID'] \
-                        = GD['R'][room]['Facility ID']
+                else:
+                    room = GD['S'][rs_counter][course]['Room']
+                GD['S'][rs_counter][course]['Facility ID'] \
+                    = GD['R'][room]['Facility ID']
+                GD['S'][rs_counter][course]['Building'] \
+                    = GD['RC'][room]['Building']
             rs_counter += 1
+        InputProcessor.print_database_2level('S')
 
     # Method to check feasibility of a solution
     # Might be able to skip this one if assignments are made as feasible
@@ -626,6 +726,7 @@ class Population:
         - penalty for time of day, but a light penalty
         - class/prereq
         - class/coreg
+        - wasted capacity in rooms
 
         - degree progression (need 2 spreadsheets that don't exist)
           first one has class/prereq (this means you can teach)
@@ -634,12 +735,23 @@ class Population:
         - no room/date/time/instructor conflicts (depends on how detailed
           the solution generator is)
         - professor workload (like how many people a class has, but not yet)
+
+        Other ideas:
+        - departure from a previous schedule/solution?
         :return:
         """
         H.say("INFO", "Evaluating fitness...")
-        # Ideas for checking fitness:
-        # Create a hash (even a mutating one?) that has the lookup
-        # of values for the function
+        score = GD['HIGH_SCORE']
+        for s in GD['S']:
+            for c in GD['S'][s]:
+                H.say("DBG1", GD['S'][s][c]['Instructor'])
+                H.say("DBG1", s, " c=", c)
+                H.say("DBG1", GD['S'][s][c]['Instructor Building'])
+                if GD['S'][s][c]['Instructor Building'] \
+                        != GD['S'][s][c]['Building']:
+                    penalty = GD['FC']['Instructor Proximity']['Penalty']
+                    print("DBG: got penalty ", penalty)
+                    score = score - int(penalty)
 
     # Crossover method
     def crossover(self):
@@ -687,7 +799,9 @@ class Main:
     ip.process_input_from_solution()
     ip.process_schedule_constraints()
     ip.process_csv_constraints(GD['COURSE_CONSTRAINTS'], "CC_PARAMS")
-    ip.process_csv_constraints(GD['FITNESS_CONSTRAINTS'], "F_PARAMS")
+    ip.process_csv_constraints(GD['FITNESS_CONSTRAINTS'], "FC_PARAMS")
+    ip.process_csv_constraints(GD['ROOM_CONSTRAINTS'], "RC_PARAMS")
+    ip.process_csv_constraints(GD['INSTRUCTOR_CONSTRAINTS'], "IC_PARAMS")
     ip.print_databases()
     ip.print_sample_assignments()
 
