@@ -5,5 +5,7 @@ Instructor Days Taught,35,,what days professor is teaching
 Time of day,10,,"penalty for time of day, but a light penalty"
 Prereq,25,,class/prereq
 Coreq,25,,class coreq
+Wasted Capacity,15,,penalty for taking classrooms with larger capacity than needed
+Instructor Workload,40,,"number of courses, could also include number of students per course"
 ,,,
 ,,,degree progression

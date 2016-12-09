@@ -40,8 +40,8 @@ import collections
 GD = dict(
     POPULATION=100,
     NUM_ITERATIONS=100,
-    NUM_SOLUTIONS_TO_TRY=2,
-    NUM_SOLUTIONS_TO_RETURN=1,
+    NUM_SOLUTIONS_TO_TRY=5,
+    NUM_SOLUTIONS_TO_RETURN=2,
     GENE_SWAP_PCT=50,
     MUTATION_RATE=5,
     MUTATION_SEVERITY=10,
@@ -52,8 +52,8 @@ GD = dict(
     FITNESS_CONSTRAINTS='Data/FitnessConstraints.csv',
     ROOM_CONSTRAINTS='Data/RoomConstraints.csv',
     INSTRUCTOR_CONSTRAINTS='Data/InstructorConstraints.csv',
-    HIGH_SCORE=1000,
-    INFO_LEVEL=1,  # see Helper.say()
+    HIGH_SCORE=20000,
+    INFO_LEVEL=2,  # see Helper.say()
     LOGFILE=open('run.log', 'w'),
     DB_2LEVEL_PARAMS=["C", "I", "R", "S", "T", "CC"],
     DB_1LEVEL_PARAMS=["FC", "RC", "IC"],
@@ -75,6 +75,8 @@ GD = dict(
               "Enrollment Total",
               "Class Subject + Nbr",
               "Instructor Name",
+              "Unit",
+              "Primary Instruction Section",
               ],
     I_PARAMS=["Instructor Name",
               "Instructor Email",
@@ -97,15 +99,18 @@ GD = dict(
                "Coreq",
                "Semester",
                ],
-    FC_PARAMS=[#"Condition",
+    # "Condition",
+    FC_PARAMS=[
               "Penalty",
               ],
-    RC_PARAMS=[#"Room",
+    # "Room",
+    RC_PARAMS=[
                "Building",
                "Capacity",
                "Labs Supported",
                ],
-    IC_PARAMS=[#"Instructor Jan/Dana ID",
+    # "Instructor Jan/Dana ID",
+    IC_PARAMS=[
                "Instructor Name",
                "Instructor Emplid",
                "Building",
@@ -509,8 +514,8 @@ class H:
                 printed_to_log += 1
             if level == "VERBOSE" and GD['INFO_LEVEL'] == 2:
                 if k != "VERBOSE":
-                    print(k, end=end_char)
-                    printed_to_terminal += 1
+                    print(k, file=GD['LOGFILE'], end=end_char)
+                    printed_to_log += 1
             if level == "DBG" and GD['INFO_LEVEL'] >= 3:
                 print(k, end=end_char)
                 printed_to_terminal += 1
@@ -596,7 +601,6 @@ class H:
 
         :return:
         """
-        H.say("VERBOSE", "Making forced assignment...")
         forced = 0
         for cc_key in GD['CC']:
             cc_course = GD['CC'][cc_key]['Course']
@@ -670,6 +674,10 @@ class Population:
                     = GD['C'][course]['Class Nbr']
                 GD['S'][rs_counter][course]['*Section'] \
                     = GD['C'][course]['*Section']
+                GD['S'][rs_counter][course]['Enrollment Cap'] \
+                    = GD['C'][course]['Enrollment Cap']
+                GD['S'][rs_counter][course]['Primary Instruction Section'] \
+                    = GD['C'][course]['Primary Instruction Section']
                 # time slot assignment, if not assigned by constraint
                 if GD['C'][course]['TimeSlotAssigned'] == 'false':
                     time = H.get_random_element('T')
@@ -682,7 +690,6 @@ class Population:
                 # TODO: have to check if instructor is not already teaching
                 # TODO: at that time (like TTh 12:25 overlapping T 1pm)
                 H.make_forced_assignment(course, "I", rs_counter)
-                instructor = ""
                 if GD['C'][course]['InstructorAssigned'] == 'false':
                     instructor = H.get_random_element('I')
                 else:
@@ -703,8 +710,10 @@ class Population:
                     = GD['R'][room]['Facility ID']
                 GD['S'][rs_counter][course]['Building'] \
                     = GD['RC'][room]['Building']
+                GD['S'][rs_counter][course]['Unit'] \
+                    = GD['C'][course]['Unit']
             rs_counter += 1
-        InputProcessor.print_database_2level('S')
+        #InputProcessor.print_database_2level('S')
 
     # Method to check feasibility of a solution
     # Might be able to skip this one if assignments are made as feasible
@@ -721,7 +730,7 @@ class Population:
         Fitness parameter hash details (could have multiple ways to configure)
         - professor proximity of chosen room to department
         - course proximity of chosen room to department
-        - what days professor is teach
+        - what days professor teaches
         - penalty for time of day, but a light penalty
         - class/prereq
         - class/coreg
@@ -733,7 +742,8 @@ class Population:
         - number of classes taught by professor (hard constraint)
         - no room/date/time/instructor conflicts (depends on how detailed
           the solution generator is)
-        - professor workload (like how many people a class has, but not yet)
+        - professor workload (like how many people a class has,
+          how many courses professor teaches, etc)
 
         Other ideas:
         - departure from a previous schedule/solution?
@@ -743,14 +753,25 @@ class Population:
         score = GD['HIGH_SCORE']
         for s in GD['S']:
             for c in GD['S'][s]:
+                # instructor proximity check = 'Instructor Proximity'
                 if GD['S'][s][c]['Instructor Building'] \
                         != GD['S'][s][c]['Building']:
                     penalty = GD['FC']['Instructor Proximity']['Penalty']
                     score = score - int(penalty)
+                # course proximity = 'Room Proximity'
+                if GD['S'][s][c]['Unit'] != GD['S'][s][c]['Building']:
+                    penalty = GD['FC']['Room Proximity']['Penalty']
+                    score = score - int(penalty)
+            H.say("VERBOSE", "Score for solution ", s, ": ", score)
+                # instructor days taught = 'Instructor Days Taught'
+                # time of day = 'Time of day'
+                # class taught in same semester as prereq = 'Prereq'
+                # wasted capacity in rooms = 'Wasted Capacity'
+                # professor workload = 'Instructor Workload'
 
     # Crossover method
     def crossover(self):
-        print("TODO crossover")
+        H.say("INFO", "Performing crossover...")
 
     # Mutation
     def mutate(self):
