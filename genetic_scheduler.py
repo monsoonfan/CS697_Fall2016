@@ -113,7 +113,7 @@ GD = dict(
     IC_PARAMS=[
                "Instructor Name",
                "Instructor Emplid",
-               "Building",
+               "Instructor Building",
     ]
 )
 
@@ -668,23 +668,15 @@ class Population:
             # course assignment
             for course in GD['C']:
                 H.say("VERBOSE", "Assigning course: ", course)
-                GD['S'][rs_counter][course]['Class Subject + Nbr'] \
-                    = GD['C'][course]['Class Subject + Nbr']
-                GD['S'][rs_counter][course]['Class Nbr'] \
-                    = GD['C'][course]['Class Nbr']
-                GD['S'][rs_counter][course]['*Section'] \
-                    = GD['C'][course]['*Section']
-                GD['S'][rs_counter][course]['Enrollment Cap'] \
-                    = GD['C'][course]['Enrollment Cap']
-                GD['S'][rs_counter][course]['Primary Instruction Section'] \
-                    = GD['C'][course]['Primary Instruction Section']
-                # time slot assignment, if not assigned by constraint
+                for c_param in GD['C_PARAMS']:
+                    GD['S'][rs_counter][course][c_param] \
+                        = GD['C'][course][c_param]
+                # time slot assignment
                 if GD['C'][course]['TimeSlotAssigned'] == 'false':
                     time = H.get_random_element('T')
-                    GD['S'][rs_counter][course]['Start Time'] \
-                        = GD['T'][time]['Start Time']
-                    GD['S'][rs_counter][course]['End Time'] \
-                        = GD['T'][time]['End Time']
+                    for t_key in GD['T'][time]:
+                        GD['S'][rs_counter][course][t_key] \
+                            = GD['T'][time][t_key]
                     GD['S'][rs_counter][course]['Time Slot'] = time
                 # instructor assignment, if not assigned by constraint
                 # TODO: have to check if instructor is not already teaching
@@ -694,10 +686,12 @@ class Population:
                     instructor = H.get_random_element('I')
                 else:
                     instructor = GD['S'][rs_counter][course]['Instructor']
-                GD['S'][rs_counter][course]['Instructor'] \
-                    = GD['I'][instructor]['Instructor Name']
-                GD['S'][rs_counter][course]['Instructor Building'] \
-                    = GD['IC'][instructor]['Building']
+                for i_key in GD['I'][instructor]:
+                    GD['S'][rs_counter][course][i_key] \
+                        = GD['I'][instructor][i_key]
+                for ic_key in GD['IC'][instructor]:
+                    GD['S'][rs_counter][course][ic_key] \
+                        = GD['IC'][instructor][ic_key]
                 # room assignment, if not assigned by constraint
                 # TODO: have to check if room is not already occupied by funky
                 # TODO: constraint (like TTh 12:25 overlapping T 1pm)
@@ -785,22 +779,84 @@ class Population:
     def sort_population(self):
         print("TODO sort")
 
-    def return_population(self):
+    def return_population_simple(self):
         """
-        Helper method to return the top n solutions in CSV format
+        Helper method to return the top n solutions in simple format
         :return:
         """
-        H.say("INFO", "Returning top ", GD['NUM_SOLUTIONS_TO_RETURN'],
-              " solutions...")
         for s in GD['S']:
             print(s)
             for c in GD['S'][s]:
                 H.say("LOG", "C:", GD['S'][s][c]['Class Subject + Nbr'],
                       GD['S'][s][c]['*Section'],
                       " ", "T:", GD['S'][s][c]['Time Slot'],
-                      " ", "I:", GD['S'][s][c]['Instructor'],
+                      " ", "I:", GD['S'][s][c]['Instructor Name'],
                       " ", "R:", GD['S'][s][c]['Facility ID']
                       )
+
+    def return_pop_simple_full(self):
+        """
+        Helper method to print all data for a solution to log
+        :return:
+        """
+        for s in GD['S']:
+            H.say("LOG", "Solution #", s)
+            for c in GD['S'][s]:
+                H.say("LOG", "Course: ", c)
+                for key in GD['S'][s][c]:
+                    H.say("LOG", "     ", key, ": ", GD['S'][s][c][key])
+
+    def return_population(self):
+        """
+        The big method to print all data for a solution to CSV the old
+        fashioned way, without using csv.writer
+        :return:
+        """
+        import sys
+        # set some vars and open the CSV
+        file_name = "Solution.csv"
+        try:
+            H.say("INFO", "Opening ", file_name, " for write...")
+            fh = open(file_name, 'w')
+        except PermissionError as e:
+            H.say("ERROR", "Could not open ", file_name,
+                  ", is it open in Excel?")
+            sys.exit(2)
+        except:
+            H.say("ERROR", "Unknown error opening ", file_name)
+
+        # print the header the first time around
+        count = 0
+        for c in GD['S'][0]:
+            for key in GD['S'][0][c]:
+                # print the header the first time around
+                if count == 0:
+                    print(key, file=fh, end=',')
+            count += 1
+        print(file=fh)
+
+        # print the data into rows
+        for s in GD['S']:
+            for c in GD['S'][s]:
+                for key in GD['S'][s][c]:
+                    print(GD['S'][s][c][key][0], file=fh, end=',')
+                print(file=fh)
+
+
+    def return_population_by_writer(self):
+        """
+        Helper method to return the top n solutions in full CSV output format
+        :return:
+        """
+        import csv
+
+        H.say("INFO", "Returning top ", GD['NUM_SOLUTIONS_TO_RETURN'],
+              " solutions...")
+        with open('solution.csv', 'w', newline='') as f:
+            writer = csv.writer(f)
+            for c in GD['S'][0]:
+                H.say("DBG1", "c: ", c, "c0: ", c[0])
+                writer.writerow(c)
 
 
 #######################################################################
@@ -833,6 +889,7 @@ class Main:
     # Finish up and return
     population.sort_population()
     population.return_population()
+    population.return_pop_simple_full()
     H.say("INFO", "Done")
 
 if __name__ == "__Main__":
