@@ -29,6 +29,7 @@
 # Imports
 #######################################################################
 import collections
+import operator
 
 #######################################################################
 # Global variables
@@ -38,9 +39,9 @@ import collections
 # value, have to reference the 0th element of the list to get value
 #######################################################################
 GD = dict(
-    POPULATION=100,
-    NUM_ITERATIONS=100,
-    NUM_SOLUTIONS_TO_TRY=5,
+    POPULATION=10,
+    CULL_SURVIVORS=5,
+    NUM_ITERATIONS=2,
     NUM_SOLUTIONS_TO_RETURN=2,
     GENE_SWAP_PCT=50,
     MUTATION_RATE=5,
@@ -64,6 +65,11 @@ GD = dict(
     S=collections.defaultdict(lambda: collections.defaultdict(
         lambda: collections.defaultdict()
     )),
+    S_COPY=collections.defaultdict(lambda: collections.defaultdict(
+        lambda: collections.defaultdict()
+    )),
+    F=collections.defaultdict(lambda: collections.defaultdict()),
+    CD=collections.defaultdict(int),  # stores sorted solution keys
     CC=collections.defaultdict(lambda: collections.defaultdict()),
     FC=collections.defaultdict(lambda: collections.defaultdict()),
     RC=collections.defaultdict(lambda: collections.defaultdict()),
@@ -77,6 +83,8 @@ GD = dict(
               "Instructor Name",
               "Unit",
               "Primary Instruction Section",
+              "*Course ID",
+              "Status",
               ],
     I_PARAMS=["Instructor Name",
               "Instructor Email",
@@ -114,13 +122,40 @@ GD = dict(
                "Instructor Name",
                "Instructor Emplid",
                "Instructor Building",
-    ]
+    ],
+    S_PARAMS=["*Course ID",
+              "Time Slot",
+              "*Section",
+              "Class Description",
+              "Class Nbr",
+              "Enrollment Cap",
+              "Class Subject + Nbr",
+              "End Time",
+              "Facility ID",
+              "Instructor Name",
+              "Meets on Monday",
+              "Meets on Tuesday",
+              "Meets on Wednesday",
+              "Meets on Thursday",
+              "Meets on Friday",
+              "Meets on Saturday",
+              "Meets on Sunday",
+              "Start Time",
+              "Unit",
+              "Status",
+              "Instructor Email",
+              "Instructor Emplid",
+              "Instructor Jan/Dana ID",
+              "Instructor Last Name",
+              "Instructor First Name",
+              "College",
+              "Primary Instruction Section",
+              "Enrollment Total",
+              "Instructor Jobtitle",
+              "Instructor Department",
+              "Instructor Building",
+              ]
 )
-
-# Hash for instructors can be simple:
-# above info plus:
-#     - building_of_office
-#     - courses taught hash
 
 
 #######################################################################
@@ -270,6 +305,12 @@ class InputProcessor:
                 if row['Meets on Friday'] == "Y":
                     time_slot_code += "F"
                     has_a_day += 1
+                if row['Meets on Saturday'] == "Y":
+                    time_slot_code += "S"
+                    has_a_day += 1
+                if row['Meets on Sunday'] == "Y":
+                    time_slot_code += "U"
+                    has_a_day += 1
                 # skip this row if no day assigned
                 if has_a_day == 0:
                     H.say("LOG", "Warning, no days found in row ", row_num)
@@ -296,16 +337,20 @@ class InputProcessor:
                 # that we have the key
                 GD['T'][time_slot_code]['Start Time'] = start_time
                 GD['T'][time_slot_code]['End Time'] = end_time
-                GD['T'][time_slot_code]['Meets on Monday'] = \
-                    row['Meets on Monday']
-                GD['T'][time_slot_code]['Meets on Tuesday'] = \
-                    row['Meets on Tuesday']
-                GD['T'][time_slot_code]['Meets on Wednesday'] = \
-                    row['Meets on Wednesday']
-                GD['T'][time_slot_code]['Meets on Thursday'] = \
-                    row['Meets on Thursday']
-                GD['T'][time_slot_code]['Meets on Friday'] = \
-                    row['Meets on Friday']
+                GD['T'][time_slot_code]['Meets on Monday'] \
+                    = row['Meets on Monday']
+                GD['T'][time_slot_code]['Meets on Tuesday'] \
+                    = row['Meets on Tuesday']
+                GD['T'][time_slot_code]['Meets on Wednesday'] \
+                    = row['Meets on Wednesday']
+                GD['T'][time_slot_code]['Meets on Thursday'] \
+                    = row['Meets on Thursday']
+                GD['T'][time_slot_code]['Meets on Friday'] \
+                    = row['Meets on Friday']
+                GD['T'][time_slot_code]['Meets on Saturday'] \
+                    = row['Meets on Saturday']
+                GD['T'][time_slot_code]['Meets on Sunday'] \
+                    = row['Meets on Sunday']
                 GD['T'][time_slot_code]['AlreadyAssigned'] = "false"
         # Finished
         H.say(
@@ -476,9 +521,7 @@ class InputProcessor:
             print(GD['I'][key]["Instructor Emplid"][0], file=file)
 
 
-
-
-            #######################################################################
+#######################################################################
 # Helper methods class
 # H = "Helper", shortened to H for length of line considerations
 #######################################################################
@@ -496,7 +539,7 @@ class H:
         (all levels will print to still print to LOG):
         0 = Turn off all messages to the prompt/shell
         1 = Turn on INFO messages to the prompt
-        2 = Turn on VERBOSE messages to the prompt
+        2 = Turn on VERBOSE messages to the log
         3 = Turn on DBG messages to the prompt
 
         :param args:
@@ -636,6 +679,23 @@ class H:
                   instructor_name,
                   " but could not find one.")
 
+    @staticmethod
+    def copy_solution(from_key, to_key, from_db, to_db):
+        """
+        Helper to perform the copy of all key/value pairs for a
+        solution entry in one dict to another
+        :param from_key:
+        :param to_key:
+        :param from_db:
+        :param to_db:
+        :return:
+        """
+        H.say("VERBOSE", "Copying solution ", from_key,
+              " from ", from_key, " to ", to_key)
+        for c in GD[from_db][from_key]:
+            for param in GD['S_PARAMS']:
+                GD[to_db][to_key][c][param] = GD[from_db][from_key][c][param]
+
 
 #######################################################################
 # Population processing class
@@ -664,7 +724,7 @@ class Population:
         H.say("INFO", "Generating set of random solutions...")
         # Make assignments randomly unless assignment was already made
         rs_counter = 0
-        while rs_counter < GD['NUM_SOLUTIONS_TO_TRY']:
+        while rs_counter < GD['POPULATION']:
             # course assignment
             for course in GD['C']:
                 H.say("VERBOSE", "Assigning course: ", course)
@@ -718,6 +778,9 @@ class Population:
     def fitness(self):
         """
         Method for evaluating the fitness of a given solution
+        creates GD['F'] dict with the number of the solution as the key
+        and the fitness score as a value, this makes it easy to traverse
+        the solutions based on fitness later
 
         Scratch pad of ideas
         --------------------
@@ -743,9 +806,9 @@ class Population:
         - departure from a previous schedule/solution?
         :return:
         """
-        H.say("INFO", "Evaluating fitness...")
-        score = GD['HIGH_SCORE']
+        H.say("LOG", "Evaluating fitness...")
         for s in GD['S']:
+            score = GD['HIGH_SCORE']
             for c in GD['S'][s]:
                 # instructor proximity check = 'Instructor Proximity'
                 if GD['S'][s][c]['Instructor Building'] \
@@ -762,22 +825,52 @@ class Population:
                 # class taught in same semester as prereq = 'Prereq'
                 # wasted capacity in rooms = 'Wasted Capacity'
                 # professor workload = 'Instructor Workload'
+            # Store the key of the solution and it's fitness score on the
+            # 'F' dict so that they can be pulled off in sorted order
+            GD['F'][s]['fitness'] = score
 
     # Crossover method
     def crossover(self):
-        H.say("INFO", "Performing crossover...")
+        H.say("LOG", "Performing crossover...")
+        # will need to pull from S_COPY
 
     # Mutation
     def mutate(self):
         print("TODO mutate")
 
-    # Culling method
-    def cull_population(self):
-        print("TODO cull")
-
-    # Helper method to sort the population
-    def sort_population(self):
-        print("TODO sort")
+    # Culling
+    @staticmethod
+    def cull_population():
+        """
+        # Culling method, this will take the top solutions one by one
+        and copy them into S_COPY dict in sorted order until the max number of
+        solutions to preserve have been copied
+        :return:
+        """
+        preserved_count = 0
+        H.say("LOG", "Culling population...")
+        # Get each fitness score and solution key
+        for f in GD['F']:
+            H.say("VERBOSE", "s: ", f, " fitness: ", GD['F'][f]['fitness'])
+            GD['CD'][f] = GD['F'][f]['fitness']
+        for k, v in sorted(
+                GD['CD'].items(),
+                key=operator.itemgetter(1),
+                reverse=True
+        ):
+            # copy surviving solutions into the copy dict
+            if preserved_count <= GD['CULL_SURVIVORS']:
+                H.say("VERBOSE", "preserving ", k, ":", preserved_count)
+                H.copy_solution(k, preserved_count, 'S', 'S_COPY')
+                preserved_count += 1
+            # purge all elements from original solutions dict, and also
+            # clear the cull and fitness score dictionaries so they will be
+            # ready for next iteration
+            del GD['S'][k]
+            del GD['CD'][k]
+            del GD['F'][k]
+        H.say("LOG", "Done, preserved ", preserved_count, " of population")
+        H.say("DBG1", "S has #", len(GD['S_COPY']))
 
     def return_population_simple(self):
         """
@@ -826,20 +919,22 @@ class Population:
             H.say("ERROR", "Unknown error opening ", file_name)
 
         # print the header the first time around
-        count = 0
-        for c in GD['S'][0]:
-            for key in GD['S'][0][c]:
-                # print the header the first time around
-                if count == 0:
-                    print(key, file=fh, end=',')
-            count += 1
+        for s_param in GD['S_PARAMS']:
+            print(s_param, file=fh, end=',')
         print(file=fh)
 
         # print the data into rows
         for s in GD['S']:
             for c in GD['S'][s]:
-                for key in GD['S'][s][c]:
-                    print(GD['S'][s][c][key][0], file=fh, end=',')
+                for s_param in GD['S_PARAMS']:
+                    # some elements are stored as lists, some are not
+                    if len(GD['S'][s][c][s_param]) == 1:
+                        print('"', GD['S'][s][c][s_param][0],
+                              '"', file=fh, end=',')
+                    else:
+                        print('"', GD['S'][s][c][s_param],
+                              '"', file=fh, end=',')
+
                 print(file=fh)
 
 
@@ -866,7 +961,7 @@ class Population:
 
 class Main:
     print("Running genetic_scheduler...")
-    # Process the input and build the DBs
+    # Process the inputs and build the DBs
     ip = InputProcessor()
     ip.process_input_from_solution()
     ip.process_schedule_constraints()
@@ -877,17 +972,26 @@ class Main:
     ip.print_databases()
     ip.print_sample_assignments()
 
-    # Initial randomly generated population seed, check
+    # Initial randomly generated population seed
     population = Population()
     population.generate_random_solutions()
-    population.fitness()
-    population.sort_population()
-    population.cull_population()
-    population.crossover()
-    population.mutate()
+    # Loop over the population and perform the mutations
+    iteration_count = 0
+    while iteration_count < GD['NUM_ITERATIONS']:
+        population.fitness()
+        population.cull_population()
+        population.crossover()
+        population.mutate()
+        iteration_count += 1
+    # End the loop
+    H.say("INFO", "Performed ",
+          GD['NUM_ITERATIONS'],
+          " iterations, returning top ",
+          GD['NUM_SOLUTIONS_TO_RETURN'],
+          " results..."
+          )
 
     # Finish up and return
-    population.sort_population()
     population.return_population()
     population.return_pop_simple_full()
     H.say("INFO", "Done")
