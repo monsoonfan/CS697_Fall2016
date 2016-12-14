@@ -19,8 +19,10 @@
 # - Online classes have no room, now to deal with
 # - T dict assumes all rooms are available for all time slots, might need
 #   a mechanism to block out rooms at certain days/times
+# - EE 188 gets capacity of 90 from Sample, but try to assign to 069-224
 #
 # Questions:
+# - strip() not working, and why whitespace in the first place
 #
 # fixed rooms/schedules - labs, etc where the place/?time fixed
 #
@@ -45,12 +47,13 @@ import operator
 GD = dict(
     POPULATION=12,
     CULL_SURVIVORS=6,
-    NUM_ITERATIONS=3,
+    NUM_ITERATIONS=10,
     NUM_SOLUTIONS_TO_RETURN=3,
     GENE_SWAP_PCT=50,
     CROSSOVER_TYPE="RANDOM_SINGLE",
     MUTATION_RATE=5,
     MUTATION_SEVERITY=10,
+    ROOM_CAPACITY_WASTE_THRESHOLD_PCT=25,
     CSV_IN='Data/ScheduleOfClassesSample.csv',
     CSV_NUM_LINES=0,
     CSV_NUM_ERRORS=0,
@@ -669,6 +672,7 @@ class H:
 
         :return:
         """
+        import sys
         forced = 0
         for cc_key in GD['CC']:
             cc_course = GD['CC'][cc_key]['Course']
@@ -686,9 +690,21 @@ class H:
                         = H.get_id(GD['CC'][cc_key]['Instructor'])
                     GD['C'][course]['InstructorAssigned'] = "true"
                 if db_type == "R":
-                    GD['S'][key][course]['Room'] \
-                        = GD['CC'][cc_key]['Room']
-                    GD['C'][course]['RoomAssigned'] = "true"
+                    room = GD['CC'][cc_key]['Room']
+                    room_capacity = GD['RC'][room]['Capacity']
+                    course_capacity = GD['C'][course]['Enrollment Cap'][0]
+                    if int(course_capacity) > int(room_capacity):
+                        H.say("ERROR", "Trying to assign course ",
+                              cc_course, " with capacity ",
+                              course_capacity, " to room ",
+                              room, " but will be over room capacity(",
+                              room_capacity, ")!"
+                              )
+                        sys.exit(2)
+                    else:
+                        GD['S'][key][course]['Room'] \
+                            = GD['CC'][cc_key]['Room']
+                        GD['C'][course]['RoomAssigned'] = "true"
                 # May need to support day/time assignment as well
 
     @staticmethod
@@ -840,6 +856,10 @@ class Population:
         for s in GD['S']:
             score = GD['HIGH_SCORE']
             for c in GD['S'][s]:
+                # set some vars that might get used multiple times
+                room = GD['S'][s][c]['Facility ID'][0]
+                capacity = GD['S'][s][c]['Enrollment Cap'][0]
+
                 # instructor proximity check = 'Instructor Proximity'
                 if GD['S'][s][c]['Instructor Building'] \
                         != GD['S'][s][c]['Building']:
@@ -851,8 +871,21 @@ class Population:
                     score -= int(penalty)
                 # instructor days taught = 'Instructor Days Taught'
                 # time of day = 'Time of day'
+                if '08:00' in GD['S'][s][c]['Start Time']:
+                    H.say("DBG1", "docking for TOD")
+                    penalty = GD['FC']['Room Proximity']['Penalty']
+                    score -= int(penalty)
                 # class taught in same semester as prereq = 'Prereq'
-                # wasted capacity in rooms = 'Wasted Capacity'
+                # wasted capacity in rooms = 'Wasted Capacity', kill the
+                # solution if the room isn't big enough
+                room_capacity = GD['RC'][room]['Capacity']
+                room_waste = (1 - (int(capacity)/int(room_capacity)))*100
+                if room_waste > 100:
+                    score = 0
+                else:
+                    if room_waste > GD['ROOM_CAPACITY_WASTE_THRESHOLD_PCT']:
+                        penalty = GD['FC']['Wasted Capacity']['Penalty']
+                        score -= int(penalty)
                 # professor workload = 'Instructor Workload'
             H.say("VERBOSE", "Score for solution ", s, ": ", score)
             # Store the key of the solution and it's fitness score on the
@@ -936,7 +969,7 @@ class Population:
     # Mutation
     @staticmethod
     def mutate():
-        H.say("DBG", "TODO mutate")
+        H.say("DBG", "TODO mutate, perhaps change day/times")
 
     # Culling
     @staticmethod
@@ -972,6 +1005,7 @@ class Population:
         H.say("LOG", "Done, preserved ", preserved_count, " of population")
 
     @staticmethod
+    # TODO: format of this method is corrupted, extra whitespace all over
     def return_population():
         """
         The big method to print all data for a solution to CSV the old
@@ -1059,11 +1093,11 @@ class Main:
     # Initial randomly generated population seed
     population = Population()
     population.generate_random_solutions()
-    # Loop over the population and perform the mutations
+
+    # Loop over the population and perform the genetic optimization
     iteration_count = 0
     while iteration_count < GD['NUM_ITERATIONS']:
         H.say("INFO", "Iteration: ", iteration_count)
-        H.say("DBG1", "Size S: ", len(GD['S']))
         population.fitness()
         population.cull_population()
         population.crossover()
@@ -1076,6 +1110,11 @@ class Main:
           GD['NUM_SOLUTIONS_TO_RETURN'],
           " results..."
           )
+
+    # Up next:
+    # - fix return_population output
+    # - improve fitness function (including check_feasible)
+    # - mutation, at least have crossover change day/time too
 
     # Finish up and return, run fitness to sort, and return top N
     population.fitness()
