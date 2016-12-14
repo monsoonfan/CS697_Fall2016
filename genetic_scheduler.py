@@ -8,9 +8,12 @@
 # jdp85
 #
 # Date:
-# Development began November 2016
+# November - December 2016
+#
+# Revisions:
 #
 # Github:
+# https://github.com/monsoonfan/CS697_Fall2016
 #
 # Issues:
 # - Online classes have no room, now to deal with
@@ -18,12 +21,13 @@
 #   a mechanism to block out rooms at certain days/times
 #
 # Questions:
-# style - global dictionary of value, or pass values to each method
-#         code seems more concise and easier to read/manipulate with
-#         global dict. One place to edit all values, don't have to hunt
-#         for params
 #
 # fixed rooms/schedules - labs, etc where the place/?time fixed
+#
+# Scratchpad:
+# - Ensure all generated solutions are legal, use culling/fitness to kill
+#   all illegal children, as opposed to generating only legal children. Use
+#   check_legality during fitness testing to accomplish this
 #
 #######################################################################
 # Imports
@@ -41,8 +45,8 @@ import operator
 GD = dict(
     POPULATION=12,
     CULL_SURVIVORS=6,
-    NUM_ITERATIONS=2,
-    NUM_SOLUTIONS_TO_RETURN=2,
+    NUM_ITERATIONS=3,
+    NUM_SOLUTIONS_TO_RETURN=3,
     GENE_SWAP_PCT=50,
     CROSSOVER_TYPE="RANDOM_SINGLE",
     MUTATION_RATE=5,
@@ -829,6 +833,7 @@ class Population:
         :return:
         """
         H.say("LOG", "Evaluating fitness...")
+        total_fitness = 0
         for s in GD['S']:
             score = GD['HIGH_SCORE']
             for c in GD['S'][s]:
@@ -850,6 +855,9 @@ class Population:
             # Store the key of the solution and it's fitness score on the
             # 'F' dict so that they can be pulled off in sorted order
             GD['F'][s]['fitness'] = score
+            total_fitness += score
+        avg_fitness = total_fitness / len(GD['S'])
+        H.say("INFO", "Average fitness: ", avg_fitness)
 
     # Crossover
     def crossover(self):
@@ -920,11 +928,11 @@ class Population:
             H.copy_solution(p2, crossover_index, 'S_COPY', 'S')
             crossover_index += 1
             pass_num += 1
-        H.say("DBG1", "Done crossover after ", pass_num-1, " passes.")
+        H.say("VERBOSE", "Done crossover after ", pass_num-1, " passes.")
 
     # Mutation
     def mutate(self):
-        print("TODO mutate")
+        H.say("DBG", "TODO mutate")
 
     # Culling
     @staticmethod
@@ -958,7 +966,6 @@ class Population:
             del GD['CD'][k]
             del GD['F'][k]
         H.say("LOG", "Done, preserved ", preserved_count, " of population")
-        H.say("DBG1", "S has #", len(GD['S_COPY']))
 
     def return_population_simple(self):
         """
@@ -991,39 +998,49 @@ class Population:
         """
         The big method to print all data for a solution to CSV the old
         fashioned way, without using csv.writer
+
         :return:
         """
         import sys
-        # set some vars and open the CSV
-        file_name = "Solution.csv"
-        try:
-            H.say("INFO", "Opening ", file_name, " for write...")
-            fh = open(file_name, 'w')
-        except PermissionError as e:
-            H.say("ERROR", "Could not open ", file_name,
-                  ", is it open in Excel?")
-            sys.exit(2)
-        except:
-            H.say("ERROR", "Unknown error opening ", file_name)
+        # determine which solutions to output
+        solution_count = 0
+        # Get each fitness score and solution key, return highest N
+        for f in GD['F']:
+            GD['CD'][f] = GD['F'][f]['fitness']
+        for s, f in sorted(GD['CD'].items(), key=operator.itemgetter(1),
+                           reverse=True):
+            if solution_count < GD['NUM_SOLUTIONS_TO_RETURN']:
+                solution_count += 1
 
-        # print the header the first time around
-        for s_param in GD['S_PARAMS']:
-            print(s_param, file=fh, end=',')
-        print(file=fh)
+                # set some vars and open the CSV
+                file_name = "Solution" + s.__str__() + "_" + f.__str__() + ".csv"
+                try:
+                    H.say("INFO", "Opening ", file_name, " for write...")
+                    fh = open(file_name, 'w')
+                except PermissionError as e:
+                    H.say("ERROR", "Could not open ", file_name,
+                          ", is it open in Excel?")
+                    sys.exit(2)
+                except:
+                    H.say("ERROR", "Unknown error opening ", file_name)
 
-        # print the data into rows
-        for s in GD['S']:
-            for c in GD['S'][s]:
+                # print the header the first time around
                 for s_param in GD['S_PARAMS']:
-                    # some elements are stored as lists, some are not
-                    if len(GD['S'][s][c][s_param]) == 1:
-                        print('"', GD['S'][s][c][s_param][0],
-                              '"', file=fh, end=',')
-                    else:
-                        print('"', GD['S'][s][c][s_param],
-                              '"', file=fh, end=',')
-
+                    print(s_param, file=fh, end=',')
                 print(file=fh)
+
+                # print the data into rows
+                for c in GD['S'][s]:
+                    for s_param in GD['S_PARAMS']:
+                        # some elements are stored as lists, some are not
+                        if len(GD['S'][s][c][s_param]) == 1:
+                            print('"', GD['S'][s][c][s_param][0],
+                                  '"', file=fh, end=',')
+                        else:
+                            print('"', GD['S'][s][c][s_param],
+                                  '"', file=fh, end=',')
+                    print(file=fh)
+        H.say("INFO", "Done, returned ", solution_count, " solutions.")
 
 
     def return_population_by_writer(self):
@@ -1066,7 +1083,8 @@ class Main:
     # Loop over the population and perform the mutations
     iteration_count = 0
     while iteration_count < GD['NUM_ITERATIONS']:
-        H.say("DBG1", "Iteration: ", iteration_count)
+        H.say("INFO", "Iteration: ", iteration_count)
+        H.say("DBG1", "Size S: ", len(GD['S']))
         population.fitness()
         population.cull_population()
         population.crossover()
@@ -1080,7 +1098,8 @@ class Main:
           " results..."
           )
 
-    # Finish up and return
+    # Finish up and return, run fitness to sort, and return top N
+    population.fitness()
     population.return_population()
     population.return_pop_simple_full()
     H.say("INFO", "Done")
