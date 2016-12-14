@@ -445,7 +445,7 @@ class InputProcessor:
         H.say("DBG", "Database: ", param)
         for k1 in GD[param]:
             for k2 in GD[param][k1]:
-                #TODO: load regexp module and skip all assigned
+                # TODO: load regexp module and skip all assigned
                 if k2 != "AlreadyAssigned":
                     H.say("DBG", "[", k1, "][", k2, "]:", GD[param][k1][k2])
 
@@ -463,7 +463,7 @@ class InputProcessor:
 
         file_name = "keys_" + param + ".csv"
         try:
-            file = open(file_name, 'w')
+            fh = open(file_name, 'w')
             H.say("INFO", "Writing ", file_name, "...")
         except PermissionError:
             H.say("ERROR", file_name, " probably open")
@@ -472,7 +472,7 @@ class InputProcessor:
             print("ERROR", "Unknown error with ", file_name)
         # print the data
         for key in sorted(GD[param]):
-            print(key, file=file)
+            print(key, file=fh)
 
     def print_databases(self):
         """
@@ -660,7 +660,7 @@ class H:
             return
 
     @staticmethod
-    def make_forced_assignment(course, type, key):
+    def make_forced_assignment(course, db_type, key):
         """
         Helper method to generate_random_solutions, this one takes a key
         from the GD['C'] courses hash and a type of assignment ('I', 'R', etc)
@@ -677,15 +677,15 @@ class H:
             c_section = GD['C'][course]['*Section'][0]
             if cc_course == c_course and cc_section == c_section:
                 forced += 1
-                H.say("VERBOSE", "Making forced (", type,
+                H.say("VERBOSE", "Making forced (", db_type,
                       ") assignment for:\n",
                       c_course, " section ", c_section
                       )
-                if type == "I":
+                if db_type == "I":
                     GD['S'][key][course]['Instructor'] \
                         = H.get_id(GD['CC'][cc_key]['Instructor'])
                     GD['C'][course]['InstructorAssigned'] = "true"
-                if type == "R":
+                if db_type == "R":
                     GD['S'][key][course]['Room'] \
                         = GD['CC'][cc_key]['Room']
                     GD['C'][course]['RoomAssigned'] = "true"
@@ -732,7 +732,8 @@ class H:
 class Population:
     global GD
 
-    def generate_random_solutions(self):
+    @staticmethod
+    def generate_random_solutions():
         """
         Method to generate the random seed of solutions
         Solution requirements:
@@ -792,16 +793,18 @@ class Population:
                 GD['S'][rs_counter][course]['Unit'] \
                     = GD['C'][course]['Unit']
             rs_counter += 1
-        #InputProcessor.print_database_2level('S')
+        # InputProcessor.print_database_2level('S')
         H.say("INFO", "Done, generated ", rs_counter, " solutions.")
 
     # Method to check feasibility of a solution
     # Might be able to skip this one if assignments are made as feasible
-    def check_feasibility(self):
+    @staticmethod
+    def check_feasibility():
         print("TODO feasible")
 
     # Fitness function
-    def fitness(self):
+    @staticmethod
+    def fitness():
         """
         Method for evaluating the fitness of a given solution
         creates GD['F'] dict with the number of the solution as the key
@@ -841,17 +844,17 @@ class Population:
                 if GD['S'][s][c]['Instructor Building'] \
                         != GD['S'][s][c]['Building']:
                     penalty = GD['FC']['Instructor Proximity']['Penalty']
-                    score = score - int(penalty)
+                    score -= int(penalty)
                 # course proximity = 'Room Proximity'
                 if GD['S'][s][c]['Unit'] != GD['S'][s][c]['Building']:
                     penalty = GD['FC']['Room Proximity']['Penalty']
-                    score = score - int(penalty)
-            H.say("VERBOSE", "Score for solution ", s, ": ", score)
+                    score -= int(penalty)
                 # instructor days taught = 'Instructor Days Taught'
                 # time of day = 'Time of day'
                 # class taught in same semester as prereq = 'Prereq'
                 # wasted capacity in rooms = 'Wasted Capacity'
                 # professor workload = 'Instructor Workload'
+            H.say("VERBOSE", "Score for solution ", s, ": ", score)
             # Store the key of the solution and it's fitness score on the
             # 'F' dict so that they can be pulled off in sorted order
             GD['F'][s]['fitness'] = score
@@ -860,7 +863,8 @@ class Population:
         H.say("INFO", "Average fitness: ", avg_fitness)
 
     # Crossover
-    def crossover(self):
+    @staticmethod
+    def crossover():
         """
         Method to implement the population crossover. Take each solution on
         the S_COPY dict and create a child from them.
@@ -883,8 +887,7 @@ class Population:
         H.say("LOG", "Performing ", type, " crossover...")
         crossover_index = 0
         # TODO: why is this always number I expect + 1?
-        #num_solutions = len(GD['S_COPY'])
-        #num_solutions = GD['CULL_SURVIVORS']
+        # num_solutions = len(GD['S_COPY'])
         num_solutions = GD['POPULATION']
         num_passes = num_solutions / 4
         pass_num = 1
@@ -931,7 +934,8 @@ class Population:
         H.say("VERBOSE", "Done crossover after ", pass_num-1, " passes.")
 
     # Mutation
-    def mutate(self):
+    @staticmethod
+    def mutate():
         H.say("DBG", "TODO mutate")
 
     # Culling
@@ -967,34 +971,8 @@ class Population:
             del GD['F'][k]
         H.say("LOG", "Done, preserved ", preserved_count, " of population")
 
-    def return_population_simple(self):
-        """
-        Helper method to return the top n solutions in simple format
-        :return:
-        """
-        for s in GD['S']:
-            print(s)
-            for c in GD['S'][s]:
-                H.say("LOG", "C:", GD['S'][s][c]['Class Subject + Nbr'],
-                      GD['S'][s][c]['*Section'],
-                      " ", "T:", GD['S'][s][c]['Time Slot'],
-                      " ", "I:", GD['S'][s][c]['Instructor Name'],
-                      " ", "R:", GD['S'][s][c]['Facility ID']
-                      )
-
-    def return_pop_simple_full(self):
-        """
-        Helper method to print all data for a solution to log
-        :return:
-        """
-        for s in GD['S']:
-            H.say("DBG", "Solution #", s)
-            for c in GD['S'][s]:
-                H.say("DBG", "Course: ", c)
-                for key in GD['S'][s][c]:
-                    H.say("DBG", "     ", key, ": ", GD['S'][s][c][key])
-
-    def return_population(self):
+    @staticmethod
+    def return_population():
         """
         The big method to print all data for a solution to CSV the old
         fashioned way, without using csv.writer
@@ -1043,7 +1021,8 @@ class Population:
         H.say("INFO", "Done, returned ", solution_count, " solutions.")
 
 
-    def return_population_by_writer(self):
+    @staticmethod
+    def return_population_by_writer():
         """
         Helper method to return the top n solutions in full CSV output format
         :return:
@@ -1101,7 +1080,6 @@ class Main:
     # Finish up and return, run fitness to sort, and return top N
     population.fitness()
     population.return_population()
-    population.return_pop_simple_full()
     H.say("INFO", "Done")
 
 if __name__ == "__Main__":
