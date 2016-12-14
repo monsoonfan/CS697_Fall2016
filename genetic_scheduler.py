@@ -39,11 +39,12 @@ import operator
 # value, have to reference the 0th element of the list to get value
 #######################################################################
 GD = dict(
-    POPULATION=10,
-    CULL_SURVIVORS=5,
+    POPULATION=12,
+    CULL_SURVIVORS=6,
     NUM_ITERATIONS=2,
     NUM_SOLUTIONS_TO_RETURN=2,
     GENE_SWAP_PCT=50,
+    CROSSOVER_TYPE="RANDOM_SINGLE",
     MUTATION_RATE=5,
     MUTATION_SEVERITY=10,
     CSV_IN='Data/ScheduleOfClassesSample.csv',
@@ -154,6 +155,7 @@ GD = dict(
               "Instructor Jobtitle",
               "Instructor Department",
               "Instructor Building",
+              "Building",
               ]
 )
 
@@ -424,9 +426,9 @@ class InputProcessor:
         :param param:
         :return:
         """
-        H.say("LOG", "Database: ", param)
+        H.say("DBG", "Database: ", param)
         for k1 in GD[param]:
-            H.say("LOG", "[", k1, "]:", GD[param][k1])
+            H.say("DBG", "[", k1, "]:", GD[param][k1])
 
     @staticmethod
     def print_database_2level(param):
@@ -436,12 +438,12 @@ class InputProcessor:
         :param param:
         :return:
         """
-        H.say("LOG", "Database: ", param)
+        H.say("DBG", "Database: ", param)
         for k1 in GD[param]:
             for k2 in GD[param][k1]:
                 #TODO: load regexp module and skip all assigned
                 if k2 != "AlreadyAssigned":
-                    H.say("LOG", "[", k1, "][", k2, "]:", GD[param][k1][k2])
+                    H.say("DBG", "[", k1, "][", k2, "]:", GD[param][k1][k2])
 
     @staticmethod
     def print_database_keys(param):
@@ -590,12 +592,31 @@ class H:
         max_num = len(GD[hash_key])
         return random.randrange(0, max_num)
 
+    @staticmethod
+    def get_random_course(hash_key, entry):
+        """
+        method to get a random course from a solution dict
+        Designed for use with cull_population
+        """
+        import random
+        counter = 0
+        max_num = len(GD[hash_key][entry])
+        key_num = random.randrange(0, max_num)
+        for course in GD[hash_key][entry]:
+            if key_num == counter:
+                return course
+            else:
+                counter += 1
+        # Error if we reach this point
+        H.say("ERROR", "Unable to find a random course key for ", hash_key)
+
     #
     @staticmethod
     def get_random_element(key):
         """
-        method to randomly get an element off a hash, but get only
-        elements that haven't been "gotten" yet
+        method to randomly get an element off a dict, but get only
+        elements that haven't been "gotten" yet.
+        Designed for use with generate_random_solutions
         :param key:
         :return: element
         """
@@ -690,7 +711,7 @@ class H:
         :param to_db:
         :return:
         """
-        H.say("VERBOSE", "Copying solution ", from_key,
+        H.say("DBG", "Copying solution ", from_key,
               " from ", from_key, " to ", to_key)
         for c in GD[from_db][from_key]:
             for param in GD['S_PARAMS']:
@@ -727,7 +748,7 @@ class Population:
         while rs_counter < GD['POPULATION']:
             # course assignment
             for course in GD['C']:
-                H.say("VERBOSE", "Assigning course: ", course)
+                H.say("DBG", "Assigning course: ", course)
                 for c_param in GD['C_PARAMS']:
                     GD['S'][rs_counter][course][c_param] \
                         = GD['C'][course][c_param]
@@ -768,6 +789,7 @@ class Population:
                     = GD['C'][course]['Unit']
             rs_counter += 1
         #InputProcessor.print_database_2level('S')
+        H.say("INFO", "Done, generated ", rs_counter, " solutions.")
 
     # Method to check feasibility of a solution
     # Might be able to skip this one if assignments are made as feasible
@@ -829,10 +851,76 @@ class Population:
             # 'F' dict so that they can be pulled off in sorted order
             GD['F'][s]['fitness'] = score
 
-    # Crossover method
+    # Crossover
     def crossover(self):
-        H.say("LOG", "Performing crossover...")
-        # will need to pull from S_COPY
+        """
+        Method to implement the population crossover. Take each solution on
+        the S_COPY dict and create a child from them.
+        Actually, let's create 2 children per pair so that the population
+        remains stable at it's max value
+
+        Techniques:
+        - swap a single random element between randomly selected parents
+
+        Notes:
+        - default: instructor will not be swapped, assume that the mapping
+          between course/instructor is not changeable
+        - an interesting idea might be to enable different types of techniques
+          within the same optimization. So, RANDOM_SINGLE for a while, then
+          switch it to RANDOM_DOUBLE for the remainder
+        :return:
+        """
+        # parameter-ize the technique so that it's easily changeable
+        ct = GD['CROSSOVER_TYPE']
+        H.say("LOG", "Performing ", type, " crossover...")
+        crossover_index = 0
+        # TODO: why is this always number I expect + 1?
+        #num_solutions = len(GD['S_COPY'])
+        #num_solutions = GD['CULL_SURVIVORS']
+        num_solutions = GD['POPULATION']
+        num_passes = num_solutions / 4
+        pass_num = 1
+
+        # Pull each solution from S_COPY and pair it with another as parents.
+        # If only one element remains on S_COPY, store it directly, maybe it
+        # will get to breed in the next iteration
+        while pass_num <= num_passes:
+            H.say("VERBOSE", "Pass: ", pass_num)
+            p1 = H.get_random_number('S_COPY')
+            p2 = H.get_random_number('S_COPY')
+            while p1 == p2:
+                p2 = H.get_random_number('S_COPY')
+
+            # create child 1 solution - p1 is the "dominant" parent
+            # instructors are always the same
+            H.copy_solution(p1, crossover_index, 'S_COPY', 'S')
+            p1_course = H.get_random_course('S_COPY', p1)
+            p2_course = H.get_random_course('S_COPY', p2)
+            H.say("VERBOSE", " swapping rooms for ",
+                  p1_course, ",", p2_course)
+            GD['S'][crossover_index][p1_course]['Facility ID'] \
+                = GD['S'][crossover_index][p2_course]['Facility ID']
+            crossover_index += 1
+
+            # create child 2 solution - p2 is the "dominant" parent
+            # instructors are always the same
+            H.copy_solution(p2, crossover_index, 'S_COPY', 'S')
+            p1_course = H.get_random_course('S_COPY', p1)
+            p2_course = H.get_random_course('S_COPY', p2)
+            H.say("VERBOSE", " swapping rooms for ",
+                  p1_course, ",", p2_course)
+            GD['S'][crossover_index][p2_course]['Facility ID'] \
+                = GD['S'][crossover_index][p1_course]['Facility ID']
+            crossover_index += 1
+
+            # store parents onto solution dict and remove them
+            # from S_COPY so they won't be selected again
+            H.copy_solution(p1, crossover_index, 'S_COPY', 'S')
+            crossover_index += 1
+            H.copy_solution(p2, crossover_index, 'S_COPY', 'S')
+            crossover_index += 1
+            pass_num += 1
+        H.say("DBG1", "Done crossover after ", pass_num-1, " passes.")
 
     # Mutation
     def mutate(self):
@@ -860,7 +948,7 @@ class Population:
         ):
             # copy surviving solutions into the copy dict
             if preserved_count <= GD['CULL_SURVIVORS']:
-                H.say("VERBOSE", "preserving ", k, ":", preserved_count)
+                H.say("DBG", "preserving ", k, ":", preserved_count)
                 H.copy_solution(k, preserved_count, 'S', 'S_COPY')
                 preserved_count += 1
             # purge all elements from original solutions dict, and also
@@ -893,11 +981,11 @@ class Population:
         :return:
         """
         for s in GD['S']:
-            H.say("LOG", "Solution #", s)
+            H.say("DBG", "Solution #", s)
             for c in GD['S'][s]:
-                H.say("LOG", "Course: ", c)
+                H.say("DBG", "Course: ", c)
                 for key in GD['S'][s][c]:
-                    H.say("LOG", "     ", key, ": ", GD['S'][s][c][key])
+                    H.say("DBG", "     ", key, ": ", GD['S'][s][c][key])
 
     def return_population(self):
         """
@@ -978,6 +1066,7 @@ class Main:
     # Loop over the population and perform the mutations
     iteration_count = 0
     while iteration_count < GD['NUM_ITERATIONS']:
+        H.say("DBG1", "Iteration: ", iteration_count)
         population.fitness()
         population.cull_population()
         population.crossover()
