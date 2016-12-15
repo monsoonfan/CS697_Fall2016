@@ -50,6 +50,11 @@ IC = InstructorConstraints.csv - specify the constraints for the instructor here
      			       	 per the example on github. These constraints are
 				 used during fitness
 
+Mapping of structures:
+GD['RC'] ->
+            [room_key] ->                 (this is an integer)
+	                  <param> = value
+
 Solutions dictionaries:
 -------------------------
 - these are where the data for the population of solutions is stored. There are

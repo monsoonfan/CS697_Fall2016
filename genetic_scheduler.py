@@ -45,8 +45,9 @@ import operator
 # value, have to reference the 0th element of the list to get value
 #######################################################################
 GD = dict(
-    POPULATION=12,
-    CULL_SURVIVORS=6,
+    DBG_ITERATION=0,
+    POPULATION=50,
+    CULL_SURVIVORS=25,
     NUM_ITERATIONS=10,
     NUM_SOLUTIONS_TO_RETURN=3,
     GENE_SWAP_PCT=50,
@@ -597,7 +598,7 @@ class H:
         """
         import random
         max_num = len(GD[hash_key])
-        return random.randrange(0, max_num)
+        return random.randrange(0, max_num, 1)
 
     @staticmethod
     def get_random_course(hash_key, entry):
@@ -608,7 +609,7 @@ class H:
         import random
         counter = 0
         max_num = len(GD[hash_key][entry])
-        key_num = random.randrange(0, max_num)
+        key_num = random.randrange(0, max_num, 1)
         for course in GD[hash_key][entry]:
             if key_num == counter:
                 return course
@@ -617,13 +618,13 @@ class H:
         # Error if we reach this point
         H.say("ERROR", "Unable to find a random course key for ", hash_key)
 
-    #
     @staticmethod
     def get_random_element(key):
         """
         method to randomly get an element off a dict, but get only
         elements that haven't been "gotten" yet.
-        Designed for use with generate_random_solutions
+        Designed for use with generate_random_solutions, and only works
+        on 'R', 'T' and 'I' dicts (they have 'AlreadyAssigned' key)
         :param key:
         :return: element
         """
@@ -655,6 +656,23 @@ class H:
             GD[key][e_id]['AlreadyAssigned']
         )
         sys.exit(2)
+
+    @staticmethod
+    def get_random_course_element():
+        """
+        Helper method to randomly return either "Facility ID" or "Time Slot"
+
+        Designed for use with mutate() method
+        :return: element_code
+        """
+        import random
+        number = random.randrange(0, 9, 1)
+        if number < 5:
+            element_code = "Facility ID"
+        else:
+            element_code = "Time Slot"
+        return element_code
+
 
     @staticmethod
     def check_element_valid():
@@ -849,6 +867,9 @@ class Population:
 
         Other ideas:
         - departure from a previous schedule/solution?
+        - TODO - keep track of penalty metrics, a way to tell the user which
+          penalties are being imposed the most? Might help tailor constraints
+          with that info
         :return:
         """
         H.say("LOG", "Evaluating fitness...")
@@ -857,7 +878,10 @@ class Population:
             score = GD['HIGH_SCORE']
             for c in GD['S'][s]:
                 # set some vars that might get used multiple times
-                room = GD['S'][s][c]['Facility ID'][0]
+                if len(GD['S'][s][c]['Facility ID']) == 1:
+                    room = GD['S'][s][c]['Facility ID'][0]
+                else:
+                    room = GD['S'][s][c]['Facility ID']
                 capacity = GD['S'][s][c]['Enrollment Cap'][0]
 
                 # instructor proximity check = 'Instructor Proximity'
@@ -871,15 +895,16 @@ class Population:
                     score -= int(penalty)
                 # instructor days taught = 'Instructor Days Taught'
                 # time of day = 'Time of day'
+                # TODO: make a conversion of 24hr time and compare it
                 if '08:00' in GD['S'][s][c]['Start Time']:
                     H.say("DBG1", "docking for TOD")
                     penalty = GD['FC']['Room Proximity']['Penalty']
                     score -= int(penalty)
                 # class taught in same semester as prereq = 'Prereq'
-                # wasted capacity in rooms = 'Wasted Capacity', kill the
-                # solution if the room isn't big enough
+                # wasted capacity in rooms = 'Wasted Capacity'
                 room_capacity = GD['RC'][room]['Capacity']
                 room_waste = (1 - (int(capacity)/int(room_capacity)))*100
+                # kill the solution if the room isn't big enough
                 if room_waste > 100:
                     score = 0
                 else:
@@ -969,7 +994,71 @@ class Population:
     # Mutation
     @staticmethod
     def mutate():
-        H.say("DBG", "TODO mutate, perhaps change day/times")
+        """
+        This needs to work on both time and location, so should crossover.
+        MUTATION_RATE is a %, so 5% would mutate a total of 5% of elements
+
+        Method #1: want to randomly choose from the entire set of
+          solutions elements to mutate, as opposed to uniformly mutating a
+          certain percentage of each solution. This way
+
+        Method #2: TODO for each solution, swap the same percentage of elements
+        """
+        H.say("LOG", "Mutating the population...")
+        ###########
+        # Method #1
+        ###########
+        # Go through each solution and un-assign a percentage of the day/time
+        # and room elements randomly.
+        unassigned_num = 0
+        unassigned_dict = collections.defaultdict(
+            lambda: collections.defaultdict(
+            )
+        )
+
+        # Get the total number of elements so that mutation rate can
+        # be tracked. Multiply number of solutions * number of courses
+        # per solution * 2 (because we are swapping only 2 possible elements
+        width = len(GD['S'])
+        height = len(GD['S'][0])
+        total_elements = width * height * 2
+
+        # Perform the un-assignment
+        while unassigned_num < (GD['MUTATION_RATE']/100) * total_elements:
+            # get random element and un-assign, update m_pct
+            random_s = H.get_random_number('S')
+            random_c = H.get_random_course('S', random_s)
+            random_e = H.get_random_course_element()
+            # TODO: return element to available status
+            element = GD['S'][random_s][random_c][random_e]
+            unassigned_dict[unassigned_num]['Solution'] = random_s
+            unassigned_dict[unassigned_num]['Course'] = random_c
+            unassigned_dict[unassigned_num]['Element'] = random_e
+            unassigned_dict[unassigned_num]['Value'] = element[0]
+            H.say("DBG", "mutating ", element, " at s:c ",
+                  random_s, ":", random_c)
+            unassigned_num += 1
+
+        # Then go through each solution and re-assign random day/time/room
+        # for all un-assigned elements
+        for u in unassigned_dict:
+            s = unassigned_dict[u]['Solution']
+            c = unassigned_dict[u]['Course']
+            e = unassigned_dict[u]['Element']
+            if "Facility ID" in e:
+                type_code = "R"
+            elif "Time Slot" in e:
+                type_code = "T"
+            else:
+                H.say("ERROR", "Unhandled element type code")
+            new_element = H.get_random_element(type_code)
+            GD['S'][s][c][e] = new_element
+            H.say("DBG", "mutation complete: ", new_element)
+
+        # Report stats/return to main loop
+        H.say("LOG", "Mutated ", unassigned_num,
+              " elements of the solution")
+
 
     # Culling
     @staticmethod
@@ -1101,8 +1190,12 @@ class Main:
         population.fitness()
         population.cull_population()
         population.crossover()
-        population.mutate()
+        # Don't run mutation on last iteration
+        if iteration_count < GD['NUM_ITERATIONS'] - 1:
+            # idea: mutate only every nth iteration??
+            population.mutate()
         iteration_count += 1
+        GD['DBG_ITERATION'] = iteration_count
     # End the loop
     H.say("INFO", "Performed ",
           GD['NUM_ITERATIONS'],
@@ -1114,7 +1207,6 @@ class Main:
     # Up next:
     # - fix return_population output
     # - improve fitness function (including check_feasible)
-    # - mutation, at least have crossover change day/time too
 
     # Finish up and return, run fitness to sort, and return top N
     population.fitness()
