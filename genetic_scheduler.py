@@ -23,13 +23,19 @@
 #
 # Questions:
 # - strip() not working, and why whitespace in the first place
-#
-# fixed rooms/schedules - labs, etc where the place/?time fixed
+# - instructor workload/days taught: if we add this to fitness, then I
+#   think the program will simply take away courses to teach unless all of
+#   the instructor/course assignments are made. Are they pretty much always
+#   going to be made by constraint?
+# - Do we have fixed rooms/schedules - labs, etc where the place/time fixed?
+# - Or how about where the room is blacked out?
 #
 # Scratchpad:
-# - Ensure all generated solutions are legal, use culling/fitness to kill
-#   all illegal children, as opposed to generating only legal children. Use
-#   check_legality during fitness testing to accomplish this
+# - want time conversion functions from the same standalone engine:
+#   - list of equivalent time slots for a given time slot
+#   - numerical time for a given 24hr time
+#
+#
 #
 #######################################################################
 # Imports
@@ -46,9 +52,9 @@ import operator
 #######################################################################
 GD = dict(
     DBG_ITERATION=0,
-    POPULATION=50,
-    CULL_SURVIVORS=25,
-    NUM_ITERATIONS=15,
+    POPULATION=12,
+    CULL_SURVIVORS=6,
+    NUM_ITERATIONS=10,
     NUM_SOLUTIONS_TO_RETURN=3,
     GENE_SWAP_PCT=50,
     CROSSOVER_TYPE="RANDOM_SINGLE",
@@ -559,9 +565,12 @@ class H:
         2 = Turn on VERBOSE messages to the log
         3 = Turn on DBG messages to the prompt
 
-        :param args:
+        Exit if ERROR
+
+        :param args: List of items to be printed
         :return:
         """
+        import sys
         level = args[0]
         end_char = ': '
         printed_to_terminal = 0
@@ -594,6 +603,8 @@ class H:
             print()
         if printed_to_log > 0:
             print(file=GD['LOGFILE'], end='\n')
+        if "ERROR" in level:
+            sys.exit(-2)
 
     @staticmethod
     def get_random_number(hash_key):
@@ -683,6 +694,115 @@ class H:
 
 
     @staticmethod
+    def get_id(instructor_name):
+        """
+        Takes 'Instructor Name' field and returns the equivalent
+        NAU Jan/Dana ID #
+        :param instructor_name: 'Palmer, James Dean'
+        :return: e.g. 'jdp85'
+        """
+        try:
+            for key in GD['I']:
+                H.say("DBG", "key: ", key, " against: ", instructor_name)
+                if GD['I'][key]['Instructor Name'][0] == instructor_name:
+                    H.say("DBG", "returning: ", key)
+                    return key
+        except:
+            H.say("ERROR", "Trying to get Jan/Dana ID for instructor\n",
+                  instructor_name,
+                  " but could not find one.")
+
+    @staticmethod
+    def get_time(time):
+        """
+        Helper to convert 24hr time into an integer.
+
+        :param time: time in 24hr format, e.g. 8:50, 13:00
+        :return: integer numerical equivalent, e.g. 850, 1300
+        """
+        components = time.split(':')
+        if len(components) != 2:
+            H.say("ERROR", "trying to convert invalid input time: ", time)
+
+        numerical_time = int(components[0] + components[1])
+
+        return numerical_time
+
+    @staticmethod
+    def get_time_slot_elements(time_slot):
+        """
+        Helper to split time_slot, can do error checking in here, so that's
+        the idea behind creating a method for a single-line operation.
+
+        :param time_slot: e.g. MWF_8:00_8:50
+        :return: list of each component, e.g. (MWF, 8:00, 8:50)
+        """
+        return_value = time_slot.split('_')
+        if len(return_value) != 3:
+            H.say("ERROR", "Invalid time slot: ", time_slot)
+        return return_value
+
+    @staticmethod
+    def get_equivalent_slots(time_slot):
+        # Variables
+        return_value = []
+
+        # Convert the input and do error checking.
+        e = H.get_time_slot_elements(time_slot)
+        start_time = int(H.get_time(e[1]))
+        end_time = int(H.get_time(e[2]))
+        if len(e) != 3:
+            H.say("ERROR", "invalid time slot: ", time_slot)
+        if start_time >= end_time:
+            print("ERROR", "start time greater than end time")
+        for t in (start_time, end_time):
+            if t < 0 or t > 2400:
+                H.say("ERROR", "invalid time: ", t)
+
+        H.say("DBG", "converting date code: ", e[0], " for: ", e[1])
+        # Do equivalent lookups for the start time and append them.
+        for ts in GD['T']:
+            ts_e = H.get_time_slot_elements(ts)
+            # enumerate the conditions over which a time slot is equivalent
+            c1 = H.get_time(e[1]) >= H.get_time(ts_e[1])
+            c2 = H.get_time(e[1]) <= H.get_time(ts_e[2])
+            c3 = H.get_time(e[2]) >= H.get_time(ts_e[1])
+            c4 = H.get_time(e[2]) <= H.get_time(ts_e[2])
+            c5 = H.check_day_equivalence(e[0], ts_e[0])
+            if ((c1 and c2) or (c3 and c4)) and c5:
+                return_value.append(ts)
+
+        # Do equivalent lookups for the end time and append them.
+        H.say("DBG", "returning: ", return_value)
+        return return_value
+
+    @staticmethod
+    def check_day_equivalence(reference, check):
+        """
+        Helper to check if days overlap between reference and check args
+
+        Example: MW would overlap with MWF time slot, and vice versa, but
+                 would not overlap with F time slot.
+                 TTh would not overlap with MW or MWF or F, but would
+                 overlap with T, Th, or TTh.
+
+        :param reference: compare against this arg, e.g. MWF
+        :param check: argument to check, e.g. MW
+        :return: True/False
+        """
+        # Swap out "Th" for "H" for easy comparisons
+        r = reference.replace("Th", "H")
+        c = check.replace("Th", "H")
+
+        # Iterate over elements of check and see if they occur in reference
+        for cc in c:
+            if cc in r:
+                return True
+
+        # Default case, return false
+        return False
+
+    @staticmethod
     def check_element_valid():
         element_valid = 0
         if element_valid == 1:
@@ -734,25 +854,13 @@ class H:
                 # May need to support day/time assignment as well
 
     @staticmethod
-    def get_id(instructor_name):
-        try:
-            for key in GD['I']:
-                H.say("DBG", "key: ", key, " against: ", instructor_name)
-                if GD['I'][key]['Instructor Name'][0] == instructor_name:
-                    H.say("DBG", "returning: ", key)
-                    return key
-        except:
-            H.say("ERROR", "Trying to get Jan/Dana ID for instructor\n",
-                  instructor_name,
-                  " but could not find one.")
-
-    @staticmethod
-    def manage_resource(resource_type, solution, resource, time, mode):
+    def manage_resource(resource_type, solution, resource, times, mode):
         """
         Helper to book or free a given resource at a given time.
         Also added functionality to check on the resource
 
         :param resource_type: RT or IT
+        :param solution: number key for the solution on GD['S'] dict
         :param resource: room or instructor
         :param time: time in time slot format (MWF_08:00_09:15)
         :param mode: book, free, or check
@@ -761,32 +869,39 @@ class H:
         # determine the mode and process the request
         if "book" in mode:
             H.say("VERBOSE", "booking resource ", resource,
-                  " at time ", time
+                  " at time ", times
                   )
-            # need to book or free at all similar times if -1 is passed in
+            # need to book or free times for all solutions if -1 is passed in
             if solution < 0:
                 count = 0
                 while count < GD['POPULATION']:
-                    GD[resource_type][count][resource][time] = "busy"
+                    for time in times:
+                        GD[resource_type][count][resource][time] = "busy"
                     count += 1
+            # book times for a single solution
             else:
-                GD[resource_type][solution][resource][time] = "busy"
+                for time in times:
+                    GD[resource_type][solution][resource][time] = "busy"
             return True
         elif "free" in mode:
             H.say("VERBOSE", "freeing resource ", resource,
-                  " at time ", time
+                  " at time ", times
                   )
-            # need to book or free at all similar times if -1 is passed in
+            # need to book or free times for all solutions if -1 is passed in
             if solution < 0:
                 count = 0
                 while count < GD['POPULATION']:
-                    GD[resource_type][count][resource][time] = "free"
+                    for time in times:
+                        GD[resource_type][count][resource][time] = "free"
                     count += 1
+            # free times for a single solution
             else:
-                GD[resource_type][solution][resource][time] = "free"
+                for time in times:
+                    GD[resource_type][solution][resource][time] = "free"
             return True
         elif "check" in mode:
-            value = GD[resource_type][solution][resource][time]
+            for time in times:
+                value = GD[resource_type][solution][resource][time]
             if "free" in value:
                 return True
             else:
@@ -842,12 +957,12 @@ class Population:
         # Iterate over each time slot, and create resources for R and I
         s = 0
         while s < GD['POPULATION']:
-            for t in GD['T']:
+            for ts in GD['T']:
                 for r in GD['R']:
-                    GD['RT'][s][r][t] = "free"
+                    GD['RT'][s][r][ts] = "free"
                     num_resources += 1
                 for i in GD['I']:
-                    GD['IT'][s][i][t] = "free"
+                    GD['IT'][s][i][ts] = "free"
                     num_resources += 1
             s += 1
 
@@ -866,11 +981,13 @@ class Population:
                 num_forces += 1
                 if 'Room' in GD['CC'][cc]:
                     room = GD['CC'][cc]['Room']
-                    H.manage_resource('RT', -1, room, time, "book")
+                    eq_times = H.get_equivalent_slots(time)
+                    H.manage_resource('RT', -1, room, eq_times, "book")
                     H.say("VERBOSE", " in room: ", room)
                 if 'Instructor' in GD['CC'][cc]:
                     instructor = H.get_id(GD['CC'][cc]['Instructor'])
-                    H.manage_resource('IT', -1, instructor, time, "book")
+                    eq_times = H.get_equivalent_slots(time)
+                    H.manage_resource('IT', -1, instructor, eq_times, "book")
                     H.say("VERBOSE", " by instructor: ", instructor)
 
         H.say("INFO", "stored ",
@@ -902,7 +1019,7 @@ class Population:
         # Make assignments randomly unless assignment was already made
         rs_counter = 0
         while rs_counter < GD['POPULATION']:
-            H.say("DBG", "creating solution ", rs_counter)
+            H.say("DBG1", "creating solution ", rs_counter)
             # course assignment
             for course in GD['C']:
                 H.say("DBG", "Assigning course: ", course)
@@ -923,10 +1040,12 @@ class Population:
                     flag = False
                     while not flag:
                         instructor = H.get_random_element('I')
+                        # TODO: check if this is working correctly, risky to pass in list when checking single time but I think it's right
+                        eq_times = H.get_equivalent_slots(time)
                         flag = H.manage_resource('IT',
                                                  rs_counter,
                                                  instructor,
-                                                 time,
+                                                 eq_times,
                                                  "check"
                                                  )
                 else:
@@ -937,7 +1056,8 @@ class Population:
                 for ic_key in GD['IC'][instructor]:
                     GD['S'][rs_counter][course][ic_key] \
                         = GD['IC'][instructor][ic_key]
-                H.manage_resource('IT', rs_counter, instructor, time, "book")
+                times = H.get_equivalent_slots(time)
+                H.manage_resource('IT', rs_counter, instructor, times, "book")
 
                 # room assignment, if not assigned by constraint
                 H.make_forced_assignment(course, "R", rs_counter)
@@ -945,10 +1065,12 @@ class Population:
                     flag = False
                     while not flag:
                         room = H.get_random_element('R')
+                        # TODO: another list risk check
+                        eq_times = H.get_equivalent_slots(time)
                         flag = H.manage_resource('RT',
                                                  rs_counter,
                                                  room,
-                                                 time,
+                                                 eq_times,
                                                  "check"
                                                  )
                 else:
@@ -959,7 +1081,8 @@ class Population:
                     = GD['RC'][room]['Building']
                 GD['S'][rs_counter][course]['Unit'] \
                     = GD['C'][course]['Unit']
-                H.manage_resource('RT', rs_counter, room, time, "book")
+                times = H.get_equivalent_slots(time)
+                H.manage_resource('RT', rs_counter, room, times, "book")
             rs_counter += 1
         # InputProcessor.print_database_2level('S')
         H.say("INFO", "Done, generated ", rs_counter, " solutions.")
@@ -1010,6 +1133,7 @@ class Population:
         """
         H.say("LOG", "Evaluating fitness...")
         total_fitness = 0
+        high_fitness = 0
         for s in GD['S']:
             score = GD['HIGH_SCORE']
             for c in GD['S'][s]:
@@ -1025,18 +1149,22 @@ class Population:
                         != GD['S'][s][c]['Building']:
                     penalty = GD['FC']['Instructor Proximity']['Penalty']
                     score -= int(penalty)
+
                 # course proximity = 'Room Proximity'
                 if GD['S'][s][c]['Unit'] != GD['S'][s][c]['Building']:
                     penalty = GD['FC']['Room Proximity']['Penalty']
                     score -= int(penalty)
-                # instructor days taught = 'Instructor Days Taught'
+
                 # time of day = 'Time of day'
                 # TODO: make a conversion of 24hr time and compare it
-                if '08:00' in GD['S'][s][c]['Start Time']:
-                    H.say("DBG1", "docking for TOD")
+                if '8:00' in GD['S'][s][c]['Start Time'] \
+                        or '17:30' in GD['S'][s][c]['Start Time']\
+                        or '19:00' in GD['S'][s][c]['Start Time']:
                     penalty = GD['FC']['Room Proximity']['Penalty']
                     score -= int(penalty)
+
                 # class taught in same semester as prereq = 'Prereq'
+
                 # wasted capacity in rooms = 'Wasted Capacity'
                 room_capacity = GD['RC'][room]['Capacity']
                 room_waste = (1 - (int(capacity)/int(room_capacity)))*100
@@ -1047,14 +1175,27 @@ class Population:
                     if room_waste > GD['ROOM_CAPACITY_WASTE_THRESHOLD_PCT']:
                         penalty = GD['FC']['Wasted Capacity']['Penalty']
                         score -= int(penalty)
-                # professor workload = 'Instructor Workload'
+
+            # instructor days taught = 'Instructor Days Taught'
+            # Simple version of check is to just count number of days
+            # instructed and add a penalty for each of them
+#            for i in GD['I']:
+
+
+            # instructor workload = 'Instructor Workload'
+            # count total number of students taught
+            workload = 0
+
             H.say("VERBOSE", "Score for solution ", s, ": ", score)
             # Store the key of the solution and it's fitness score on the
             # 'F' dict so that they can be pulled off in sorted order
             GD['F'][s]['fitness'] = score
             total_fitness += score
-        avg_fitness = total_fitness / len(GD['S'])
-        H.say("INFO", "Average fitness: ", avg_fitness)
+            high_fitness = max(score, high_fitness)
+        avg_fitness = round(total_fitness / len(GD['S']), 2)
+
+        H.say("INFO", "Average fitness: ", avg_fitness,
+              " \n                 High: ", high_fitness)
 
     # Crossover
     @staticmethod
@@ -1345,8 +1486,10 @@ class Main:
     # - improve fitness function (including check_feasible)
 
     # Finish up and return, run fitness to sort, and return top N
+    ip.print_database_1level('RT')
+    ip.print_database_1level('IT')
     population.fitness()
-    #population.return_population()
+    population.return_population()
     H.say("INFO", "Done")
 
 if __name__ == "__Main__":
