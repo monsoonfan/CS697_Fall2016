@@ -78,6 +78,8 @@ GD = dict(
         lambda: collections.defaultdict()
     )),
     F=collections.defaultdict(lambda: collections.defaultdict()),
+    RT=collections.defaultdict(lambda: collections.defaultdict()),
+    IT=collections.defaultdict(lambda: collections.defaultdict()),
     CD=collections.defaultdict(int),  # stores sorted solution keys
     CC=collections.defaultdict(lambda: collections.defaultdict()),
     FC=collections.defaultdict(lambda: collections.defaultdict()),
@@ -112,6 +114,7 @@ GD = dict(
                "Section",
                "Instructor",
                "Room",
+               "Time Slot",
                "Prereq",
                "Coreq",
                "Semester",
@@ -739,6 +742,22 @@ class H:
                   " but could not find one.")
 
     @staticmethod
+    def book_resource(resource_type, resource, time, value):
+        """
+        Helper to book or free a given resource at a given time.
+
+        :param resource_type: RT or IT
+        :param resource: room or instructor
+        :param time: time in time slot format (MWF_08:00_09:15)
+        :param value: busy or free
+        :return:
+        """
+        H.say("DBG1", "booking resource ", resource,
+                      " at time ", time
+              )
+        GD[resource_type][resource][time] = value
+
+    @staticmethod
     def copy_solution(from_key, to_key, from_db, to_db):
         """
         Helper to perform the copy of all key/value pairs for a
@@ -767,6 +786,59 @@ class Population:
     global GD
 
     @staticmethod
+    def initialize_resources():
+        """
+        Method to initialize the GD['RT'] and GD['IT'] data structures, which
+        contain an enumeration of all time slots for each room and
+        instructor, respectively.
+
+        Values are "busy" and "free". As each resource (room/instructor) is
+        assigned, it is marked busy/free in this structure so that no
+        duplicate resource assignments are made.
+
+        :return:
+        """
+        H.say("INFO", "Initializing resources...")
+        num_resources = 0
+        # Iterate over each time slot, and create resources for R and I
+        for t in GD['T']:
+            for r in GD['R']:
+                GD['RT'][r][t] = "free"
+                num_resources += 1
+            for i in GD['I']:
+                GD['IT'][i][t] = "free"
+                num_resources += 1
+
+        # Now that time slot calendar is made for each R/I, populate with
+        # any forced assignments.
+        num_forces = 0
+
+        # Iterate over all course constraints and find any time slots.
+        for cc in GD['CC']:
+            course = GD['CC'][cc]['Course']
+            if 'Time Slot' in GD['CC'][cc]:
+                time = GD['CC'][cc]['Time Slot']
+                H.say("DBG1", "Assignment for: ",
+                              course, " at ", time
+                      )
+                num_forces += 1
+                if 'Room' in GD['CC'][cc]:
+                    room = GD['CC'][cc]['Room']
+                    H.book_resource('RT', room, time, "busy")
+                    H.say("DBG1", " in room: ", room)
+                if 'Instructor' in GD['CC'][cc]:
+                    instructor = H.get_id(GD['CC'][cc]['Instructor'])
+                    H.book_resource('IT', instructor, time, "busy")
+                    H.say("DBG1", " by instructor: ", instructor)
+
+        H.say("INFO", "stored ",
+                      num_forces, " assignments into resource calendar")
+
+        H.say("INFO", "Done, created ",
+              num_resources, " instructor/room \nresources for ",
+              len(GD['T']), " time slots on the calendar.")
+
+    @staticmethod
     def generate_random_solutions():
         """
         Method to generate the random seed of solutions
@@ -782,6 +854,9 @@ class Population:
         :return:
         """
         H.say("INFO", "Generating set of random solutions...")
+        # Initialize the resources calendar
+        Population.initialize_resources()
+
         # Make assignments randomly unless assignment was already made
         rs_counter = 0
         while rs_counter < GD['POPULATION']:
@@ -826,6 +901,7 @@ class Population:
                     = GD['RC'][room]['Building']
                 GD['S'][rs_counter][course]['Unit'] \
                     = GD['C'][course]['Unit']
+                #GD['RT'][room][time] = "busy"
             rs_counter += 1
         # InputProcessor.print_database_2level('S')
         H.say("INFO", "Done, generated ", rs_counter, " solutions.")
@@ -833,8 +909,10 @@ class Population:
     # Method to check feasibility of a solution
     # Might be able to skip this one if assignments are made as feasible
     @staticmethod
-    def check_feasibility():
-        print("TODO feasible")
+    def check_feasibility(hash_key, entry):
+        H.say("DBG1", "Checking feasibility...")
+        for c in GD[hash_key][entry]:
+            print(c)
 
     # Fitness function
     @staticmethod
@@ -1210,7 +1288,7 @@ class Main:
 
     # Finish up and return, run fitness to sort, and return top N
     population.fitness()
-    population.return_population()
+    #population.return_population()
     H.say("INFO", "Done")
 
 if __name__ == "__Main__":

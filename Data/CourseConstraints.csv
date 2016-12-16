@@ -1,21 +1,21 @@
-Course,Section,Instructor,Room,Prereq,Coreq,Semester
-CS 122L,1,"Jacobs,Steven Miles",069-106,,,Fall/Spring
-CS 122L,2,"Jacobs,Steven Miles",069-106,,,Fall/Spring
-CS 122L,3,"Jacobs,Steven Miles",069-106,,,Fall/Spring
-CS 122L,4,"Jacobs,Steven Miles",069-106,,,Fall/Spring
-CS 122L,5,"Jacobs,Steven Miles",069-106,,,Fall/Spring
-CS 122L,6,"Jacobs,Steven Miles",069-106,,,Fall/Spring
-CS 122L,7,"Jacobs,Steven Miles",069-106,,,Fall/Spring
-CS 122L,8,"Jacobs,Steven Miles",069-106,,,Fall/Spring
-CS 126,1,"Vanderberg,Margaret Lisa Hamill",069-321,,,Fall
-CS 126,2,"Vanderberg,Margaret Lisa Hamill",069-321,,,Fall
-CS 126L,1,"Vanderberg,Margaret Lisa Hamill",069-106,,CS126,Fall
-CS 126L,2,"Vanderberg,Margaret Lisa Hamill",069-106,,CS126,Fall
-CS 126L,3,"Vanderberg,Margaret Lisa Hamill",069-106,,CS126,Fall
-CS 126L,4,"Vanderberg,Margaret Lisa Hamill",069-106,,CS126,Fall
-CS 136,1,"Elwakil,Mohamed Medhat",069-101,CS126,,Spring
-CS 136,2,"Elwakil,Mohamed Medhat",069-101,CS126,,Spring
-CS 249,1,"Kelley,Patrick Edward",082-017,CS136,,Fall/Spring
-EE 188,1,"Grubbs,Elmer Andrew",082-017,,,Fall
-EE 188L,1,"Zhou,Xi",069-106,,,Fall
-EE 188L,2,"Scott,David Robin",069-106,,,Fall
+Course,Section,Instructor,Room,Time Slot,Prereq,Coreq,Semester
+CS 122L,1,"Jacobs,Steven Miles",069-106,MWF_08:00_09:15,,,Fall/Spring
+CS 122L,2,"Jacobs,Steven Miles",069-106,,,,Fall/Spring
+CS 122L,3,"Jacobs,Steven Miles",069-106,,,,Fall/Spring
+CS 122L,4,"Jacobs,Steven Miles",069-106,,,,Fall/Spring
+CS 122L,5,"Jacobs,Steven Miles",069-106,,,,Fall/Spring
+CS 122L,6,"Jacobs,Steven Miles",069-106,,,,Fall/Spring
+CS 122L,7,"Jacobs,Steven Miles",069-106,,,,Fall/Spring
+CS 122L,8,"Jacobs,Steven Miles",069-106,,,,Fall/Spring
+CS 126,1,"Vanderberg,Margaret Lisa Hamill",069-321,,,,Fall
+CS 126,2,"Vanderberg,Margaret Lisa Hamill",069-321,,,,Fall
+CS 126L,1,"Vanderberg,Margaret Lisa Hamill",069-106,,,CS126,Fall
+CS 126L,2,"Vanderberg,Margaret Lisa Hamill",069-106,,,CS126,Fall
+CS 126L,3,"Vanderberg,Margaret Lisa Hamill",069-106,,,CS126,Fall
+CS 126L,4,"Vanderberg,Margaret Lisa Hamill",069-106,,,CS126,Fall
+CS 136,1,"Elwakil,Mohamed Medhat",069-101,,CS126,,Spring
+CS 136,2,"Elwakil,Mohamed Medhat",069-101,,CS126,,Spring
+CS 249,1,"Kelley,Patrick Edward",082-017,,CS136,,Fall/Spring
+EE 188,1,"Grubbs,Elmer Andrew",082-017,,,,Fall
+EE 188L,1,"Zhou,Xi",069-106,,,,Fall
+EE 188L,2,"Scott,David Robin",069-106,,,,Fall

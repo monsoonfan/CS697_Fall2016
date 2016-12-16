@@ -83,3 +83,15 @@ GD['S'] ->
 Example - this would assign 069-224 as the room for "SOFTWARE ARCHITECTURE",
           Section #1 for the 4th solution on the 'S' dictionary:
 GD['S'][3][10912_1]['Facility ID'] = "069-224"
+
+
+Special dictionary:
+--------------------
+generate_random_solutions and mutation should check these, maybe even crossover:
+
+RT - this one is basically the resource calendar for rooms at each enumerated time slot
+IT - same as RT for instructors
+
+RT[room_key] ->
+	        [time_key] = busy/free
+
