@@ -581,7 +581,7 @@ class H:
                 print(k, file=GD['LOGFILE'], end=end_char)
                 printed_to_terminal += 1
                 printed_to_log += 1
-            if level == "VERBOSE" and GD['INFO_LEVEL'] == 2:
+            if level == "VERBOSE" and GD['INFO_LEVEL'] >= 2:
                 if k != "VERBOSE":
                     print(k, file=GD['LOGFILE'], end=end_char)
                     printed_to_log += 1
@@ -862,7 +862,7 @@ class H:
         :param resource_type: RT or IT
         :param solution: number key for the solution on GD['S'] dict
         :param resource: room or instructor
-        :param time: time in time slot format (MWF_08:00_09:15)
+        :param times: list of times in time slot format (MWF_08:00_09:15)
         :param mode: book, free, or check
         :return: 0 or 1
         """
@@ -1302,18 +1302,41 @@ class Population:
 
         # Perform the un-assignment
         while unassigned_num < (GD['MUTATION_RATE']/100) * total_elements:
-            # get random element and un-assign, update m_pct
+            # get random element and un-assign, update count
             random_s = H.get_random_number('S')
             random_c = H.get_random_course('S', random_s)
             random_e = H.get_random_course_element()
-            # TODO: return element to available status
             element = GD['S'][random_s][random_c][random_e]
+            instructor = GD['S'][random_s][random_c]['Instructor Name']
+            room = GD['S'][random_s][random_c]['Facility ID']
+            if "Facility ID" in random_e:
+                # only free the room resource in this case
+                r_type = "RT"
+                e_type = "R"
+            elif "Time Slot" in random_e:
+                # In this case, need to free both the room and instructor,
+                # at the current time slot, then the assignment can try to
+                # find a new time slot for the room/instructor pair
+                r_type = "IT"
+                e_type = "T"
+            else:
+                H.say("ERROR", "Unrecognized type code ", random_e)
             unassigned_dict[unassigned_num]['Solution'] = random_s
             unassigned_dict[unassigned_num]['Course'] = random_c
-            unassigned_dict[unassigned_num]['Element'] = random_e
+            unassigned_dict[unassigned_num]['Element Type'] = random_e
+            unassigned_dict[unassigned_num]['Element Type Code'] = e_type
+            unassigned_dict[unassigned_num]['Resource Type Code'] = r_type
             unassigned_dict[unassigned_num]['Value'] = element[0]
             H.say("DBG", "mutating ", element, " at s:c ",
                   random_s, ":", random_c)
+            times = H.get_equivalent_slots(
+                GD['S'][random_s][random_c]['Time Slot']
+            )
+            if "RT" in r_type:
+                H.manage_resource(r_type, random_s, room[0], times, "free")
+            else:
+                H.manage_resource(r_type, random_s, instructor, times, "free")
+                H.manage_resource("RT", random_s, room[0], times, "free")
             unassigned_num += 1
 
         # Then go through each solution and re-assign random day/time/room
@@ -1321,15 +1344,16 @@ class Population:
         for u in unassigned_dict:
             s = unassigned_dict[u]['Solution']
             c = unassigned_dict[u]['Course']
-            e = unassigned_dict[u]['Element']
-            if "Facility ID" in e:
-                type_code = "R"
-            elif "Time Slot" in e:
-                type_code = "T"
+            et = unassigned_dict[u]['Element Type']
+            ec = unassigned_dict[u]['Element Type Code']
+            tc = unassigned_dict[u]['Resource Type Code']
+            new_element = H.get_random_element(ec)
+            GD['S'][s][c][et] = new_element
+            if "RT" in tc:
+                H.manage_resource("IT", s, ec, times, "book")
             else:
-                H.say("ERROR", "Unhandled element type code")
-            new_element = H.get_random_element(type_code)
-            GD['S'][s][c][e] = new_element
+                H.manage_resource("IT", s, ec, times, "book")
+                H.manage_resource("RT", s, ec, times, "book")
             H.say("DBG", "mutation complete: ", new_element)
 
         # Report stats/return to main loop
@@ -1397,7 +1421,9 @@ class Population:
                     fh = open(file_name, 'w')
                 except PermissionError as e:
                     H.say("ERROR", "Could not open ", file_name,
-                          ", is it open in Excel?")
+                          ", is it open in Excel?",
+                          e.strerror()
+                          )
                     sys.exit(2)
                 except:
                     H.say("ERROR", "Unknown error opening ", file_name)
