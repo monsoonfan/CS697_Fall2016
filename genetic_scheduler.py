@@ -1107,71 +1107,75 @@ class Population:
 
                 # time slot assignment
                 time_valid = False
-#                while not time_valid:
-                time = H.get_time_slot(rs_counter, course)
+                while not time_valid:
+                    time_valid = True  # if not, will set false during while
+                    time = H.get_time_slot(rs_counter, course)
+                    H.say("DBG", " trying time: ", time)
 
-                # instructor assignment, if not assigned by constraint
-                H.say("DBG", " assigning instructor...")
-                H.make_forced_assignment(course, "I", rs_counter)
-                if GD['C'][course]['InstructorAssigned'] == 'false':
-                    # Iterate until available instructor found
-                    flag = False
-                    try_counter = 0
-                    while not flag:
-                        instructor = H.get_random_element('I')
-                        eq_times = H.get_equivalent_slots(time)
-                        flag = H.manage_resource('IT',
-                                                 rs_counter,
-                                                 instructor,
-                                                 eq_times,
-                                                 "check"
-                                                 )
-                        if try_counter == len(GD['I']):
-                            H.say("DBG", "all instructors booked at ", time)
-                            time = H.get_time_slot(rs_counter, course)
-                            try_counter = 0
-                            H.say("DBG", "trying new time: ", time)
-                        try_counter += 1
-                else:
-                    instructor = GD['S'][rs_counter][course]['Instructor']
-                for i_key in GD['I'][instructor]:
-                    GD['S'][rs_counter][course][i_key] \
-                        = GD['I'][instructor][i_key]
-                for ic_key in GD['IC'][instructor]:
-                    GD['S'][rs_counter][course][ic_key] \
-                        = GD['IC'][instructor][ic_key]
-                times = H.get_equivalent_slots(time)
-                H.say("DBG", " instructor: ", instructor)
-                H.manage_resource('IT', rs_counter, instructor, times, "book")
+                    # instructor assignment, if not assigned by constraint
+                    # not very efficient, assign instructor each time, works
+                    H.say("DBG", "  assigning instructor...")
+                    H.make_forced_assignment(course, "I", rs_counter)
+                    if GD['C'][course]['InstructorAssigned'] == 'false':
+                        # Iterate until available instructor found
+                        flag = False
+                        try_counter = 0
+                        while not flag:
+                            instructor = H.get_random_element('I')
+                            eq_times = H.get_equivalent_slots(time)
+                            flag = H.manage_resource('IT',
+                                                     rs_counter,
+                                                     instructor,
+                                                     eq_times,
+                                                     "check"
+                                                     )
+                            if try_counter == len(GD['I']):
+                                H.say("DBG", "all instructors busy at ", time)
+                                time_valid = False
+                                break
+                            try_counter += 1
+                    else:
+                        instructor = GD['S'][rs_counter][course]['Instructor']
+                    for i_key in GD['I'][instructor]:
+                        GD['S'][rs_counter][course][i_key] \
+                            = GD['I'][instructor][i_key]
+                    for ic_key in GD['IC'][instructor]:
+                        GD['S'][rs_counter][course][ic_key] \
+                            = GD['IC'][instructor][ic_key]
+                    times = H.get_equivalent_slots(time)
+                    H.say("DBG", " instructor: ", instructor)
+                    H.manage_resource('IT', rs_counter, instructor,
+                                      times, "book")
 
-                # room assignment, if not assigned by constraint
-                H.make_forced_assignment(course, "R", rs_counter)
-                if GD['C'][course]['RoomAssigned'] == 'false':
-                    flag = False
-                    try_counter = 0
-                    while not flag:
-                        room = H.get_random_element('R')
-                        eq_times = H.get_equivalent_slots(time)
-                        flag = H.manage_resource('RT',
-                                                 rs_counter,
-                                                 room,
-                                                 eq_times,
-                                                 "check"
-                                                 )
-                        if try_counter == len(GD['R']):
-                            H.say("DBG", "all rooms booked at ", time)
-                            break
-                        try_counter += 1
-                else:
-                    room = GD['S'][rs_counter][course]['Room']
-                GD['S'][rs_counter][course]['Facility ID'] \
-                    = GD['R'][room]['Facility ID']
-                GD['S'][rs_counter][course]['Building'] \
-                    = GD['RC'][room]['Building']
-                GD['S'][rs_counter][course]['Unit'] \
-                    = GD['C'][course]['Unit']
-                times = H.get_equivalent_slots(time)
-                H.manage_resource('RT', rs_counter, room, times, "book")
+                    # room assignment, if not assigned by constraint
+                    H.make_forced_assignment(course, "R", rs_counter)
+                    if GD['C'][course]['RoomAssigned'] == 'false':
+                        flag = False
+                        try_counter = 0
+                        while not flag:
+                            room = H.get_random_element('R')
+                            eq_times = H.get_equivalent_slots(time)
+                            flag = H.manage_resource('RT',
+                                                     rs_counter,
+                                                     room,
+                                                     eq_times,
+                                                     "check"
+                                                     )
+                            if try_counter == len(GD['R']):
+                                H.say("DBG", "all rooms booked at ", time)
+                                time_valid = False
+                                break
+                            try_counter += 1
+                    else:
+                        room = GD['S'][rs_counter][course]['Room']
+                    GD['S'][rs_counter][course]['Facility ID'] \
+                        = GD['R'][room]['Facility ID']
+                    GD['S'][rs_counter][course]['Building'] \
+                        = GD['RC'][room]['Building']
+                    GD['S'][rs_counter][course]['Unit'] \
+                        = GD['C'][course]['Unit']
+                    times = H.get_equivalent_slots(time)
+                    H.manage_resource('RT', rs_counter, room, times, "book")
             rs_counter += 1
         # InputProcessor.print_database_2level('S')
         H.say("INFO", "Done, generated ", rs_counter, " solutions.")
