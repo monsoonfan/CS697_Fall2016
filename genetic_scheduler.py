@@ -147,6 +147,7 @@ GD = dict(
                "Instructor Name",
                "Instructor Emplid",
                "Instructor Building",
+               "Courses Taught",
     ],
     S_PARAMS=["*Course ID",
               "Time Slot",
@@ -740,6 +741,26 @@ class H:
         return numerical_time
 
     @staticmethod
+    def get_time_slot(solution, course):
+        """
+        Helper to get a random time slot and assign the course to it
+        within the given solution number.
+
+        :param solution: key from GD['S'] hash
+        :param course: key from GD['S'][solution] hash
+        :return:
+        """
+        H.say("DBG", "g_t_s in: ", solution, ":", course)
+        if GD['C'][course]['TimeSlotAssigned'] == 'false':
+            time = H.get_random_element('T')
+            for t_key in GD['T'][time]:
+                GD['S'][solution][course][t_key] \
+                    = GD['T'][time][t_key]
+                GD['S'][solution][course]['Time Slot'] = time
+        H.say("DBG,", "g_t_s out: ", time)
+        return time
+
+    @staticmethod
     def get_time_slot_elements(time_slot):
         """
         Helper to split time_slot, can do error checking in here, so that's
@@ -1085,14 +1106,9 @@ class Population:
                         = GD['C'][course][c_param]
 
                 # time slot assignment
-                H.say("DBG", " assigning time slot...")
-                if GD['C'][course]['TimeSlotAssigned'] == 'false':
-                    time = H.get_random_element('T')
-                    for t_key in GD['T'][time]:
-                        GD['S'][rs_counter][course][t_key] \
-                            = GD['T'][time][t_key]
-                    GD['S'][rs_counter][course]['Time Slot'] = time
-                H.say("DBG,", " time: ", time)
+                time_valid = False
+#                while not time_valid:
+                time = H.get_time_slot(rs_counter, course)
 
                 # instructor assignment, if not assigned by constraint
                 H.say("DBG", " assigning instructor...")
@@ -1112,7 +1128,9 @@ class Population:
                                                  )
                         if try_counter == len(GD['I']):
                             H.say("DBG", "all instructors booked at ", time)
-                            break
+                            time = H.get_time_slot(rs_counter, course)
+                            try_counter = 0
+                            H.say("DBG", "trying new time: ", time)
                         try_counter += 1
                 else:
                     instructor = GD['S'][rs_counter][course]['Instructor']
