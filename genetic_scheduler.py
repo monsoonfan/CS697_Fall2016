@@ -156,7 +156,7 @@ GD = dict(
                "Instructor Email",
                "Instructor Jan/Dana ID",
                "College",
-    ],
+               ],
     S_PARAMS=["*Course ID",
               "Time Slot",
               "*Section",
@@ -783,7 +783,6 @@ class H:
             element_code = "Time Slot"
         return element_code
 
-
     @staticmethod
     def get_id(instructor_name):
         """
@@ -895,8 +894,6 @@ class H:
 
         :return:
         """
-        import sys
-
         H.say("DBG", "m_f_a in: ", course, ":", db_type, ":", key)
         forced = 0
         for cc_key in GD['CC']:
@@ -968,9 +965,9 @@ class H:
             # book times for a single solution
             else:
                 for time in times:
-                    #if GD[resource_type][solution][resource][time] == "free":
+                    # if GD[resource_type][solution][resource][time] == "free":
                     GD[resource_type][solution][resource][time] = "busy"
-                    #else:
+                    # else:
                     #    H.say("ERROR", "Trying to book a busy resource!\n",
                     #          resource, ":", time)
             H.say("DBG", "m_r returning True (busy)")
@@ -988,9 +985,9 @@ class H:
                 while count < GD['POPULATION']:
                     for time in times:
                         if GD[resource_type][count][resource][time] == "free":
-                            H.say("WARN", "Trying to free resource that's\n"
-                                  , "already free, might want to check that"
-                                  , resource, ":", time)
+                            H.say("WARN", "Trying to free resource that's\n",
+                                  "already free, might want to check that",
+                                  resource, ":", time)
                         GD[resource_type][count][resource][time] = "free"
                     count += 1
             # free times for a single solution
@@ -1211,12 +1208,14 @@ class Population:
                                                      eq_times,
                                                      "check"
                                                      )
-                            if try_counter == len(GD['I']):
+                            if try_counter == len(GD['C'][course]['Instructors']):
                                 H.say("DBG", "all instructors busy at ", time)
                                 time_valid = False
                                 break
                             try_counter += 1
                     else:
+                        # Can cheat here and not check time slots because they
+                        # were already booked during initialization.
                         instructor = GD['S'][rs_counter][course]['Instructor']
                     for i_key in GD['I'][instructor]:
                         GD['S'][rs_counter][course][i_key] \
@@ -1542,7 +1541,6 @@ class Population:
         H.say("LOG", "Mutated ", unassigned_num,
               " elements of the solution")
 
-
     # Culling
     @staticmethod
     def cull_population():
@@ -1627,7 +1625,6 @@ class Population:
                                   '"', file=fh, end=',')
                     print(file=fh)
         H.say("INFO", "Done, returned ", solution_count, " solutions.")
-
 
     @staticmethod
     def return_population_by_writer():
