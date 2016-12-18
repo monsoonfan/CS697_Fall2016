@@ -1056,6 +1056,8 @@ class Population:
         """
         H.say("INFO", "Initializing resources...")
         # Also add instructors from InstructorConstraints to GD['I'] dict
+        # TODO: fix this, think it's overwriting good data from sample
+        # solution with blank data from incomplete IC constraints
         for ic in GD['IC']:
             if ic not in GD['I']:
                 for i_param in GD['I_PARAMS']:
@@ -1217,16 +1219,6 @@ class Population:
                         # Can cheat here and not check time slots because they
                         # were already booked during initialization.
                         instructor = GD['S'][rs_counter][course]['Instructor']
-                    for i_key in GD['I'][instructor]:
-                        GD['S'][rs_counter][course][i_key] \
-                            = GD['I'][instructor][i_key]
-                    for ic_key in GD['IC'][instructor]:
-                        GD['S'][rs_counter][course][ic_key] \
-                            = GD['IC'][instructor][ic_key]
-                    times = H.get_equivalent_slots(time)
-                    H.say("DBG", " instructor: ", instructor)
-                    H.manage_resource('IT', rs_counter, instructor,
-                                      times, "book")
 
                     # room assignment, if not assigned by constraint
                     H.make_forced_assignment(course, "R", rs_counter)
@@ -1249,14 +1241,32 @@ class Population:
                             try_counter += 1
                     else:
                         room = GD['S'][rs_counter][course]['Room']
-                    GD['S'][rs_counter][course]['Facility ID'] \
-                        = GD['R'][room]['Facility ID']
-                    GD['S'][rs_counter][course]['Building'] \
-                        = GD['RC'][room]['Building']
-                    GD['S'][rs_counter][course]['Unit'] \
-                        = GD['C'][course]['Unit']
-                    times = H.get_equivalent_slots(time)
-                    H.manage_resource('RT', rs_counter, room, times, "book")
+
+                # Now actually book the resources.
+                # Instructor
+                for i_key in GD['I'][instructor]:
+                    GD['S'][rs_counter][course][i_key] \
+                        = GD['I'][instructor][i_key]
+                # TODO: fix this, if IC constraints are incomplete or incorrect
+                # they will overwrite
+                for ic_key in GD['IC'][instructor]:
+                    if GD['IC'][instructor][ic_key] != "":
+                        GD['S'][rs_counter][course][ic_key] \
+                            = GD['IC'][instructor][ic_key]
+                times = H.get_equivalent_slots(time)
+                H.say("DBG", " instructor: ", instructor)
+                H.manage_resource('IT', rs_counter, instructor,
+                                  times, "book")
+                # Room
+                GD['S'][rs_counter][course]['Facility ID'] \
+                    = GD['R'][room]['Facility ID']
+                GD['S'][rs_counter][course]['Building'] \
+                    = GD['RC'][room]['Building']
+                GD['S'][rs_counter][course]['Unit'] \
+                    = GD['C'][course]['Unit']
+                times = H.get_equivalent_slots(time)
+                H.manage_resource('RT', rs_counter, room, times, "book")
+
             rs_counter += 1
         # InputProcessor.print_database_2level('S')
         H.say("INFO", "Done, generated ", rs_counter, " solutions.")
@@ -1691,8 +1701,8 @@ class Main:
     # - improve fitness function (including check_feasible)
 
     # Finish up and return, run fitness to sort, and return top N
-    ip.print_database_1level('RT')
-    ip.print_database_1level('IT')
+    # ip.print_database_1level('RT')
+    # ip.print_database_1level('IT')
     population.fitness()
     population.return_population()
     H.say("INFO", "Done")
