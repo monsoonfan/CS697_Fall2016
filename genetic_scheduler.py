@@ -22,6 +22,8 @@
 # - EE 188 gets capacity of 90 from Sample, but try to assign to 069-224
 # - need to kill solutions where time slots don't match minimum/maximum units,
 #   and perhaps add some preference for standard time slots?
+# - For new instructors not in the sample, have to add their info into
+#   InstructorConstraints.csv
 #
 # Questions:
 # - strip() not working, and why whitespace in the first place
@@ -143,11 +145,17 @@ GD = dict(
                "Labs Supported",
                ],
     # "Instructor Jan/Dana ID",
-    IC_PARAMS=[
-               "Instructor Name",
+    IC_PARAMS=["Instructor Name",
                "Instructor Emplid",
                "Instructor Building",
                "Courses Taught",
+               "Instructor Last Name",
+               "Instructor First Name",
+               "Instructor Jobtitle",
+               "Instructor Department",
+               "Instructor Email",
+               "Instructor Jan/Dana ID",
+               "College",
     ],
     S_PARAMS=["*Course ID",
               "Time Slot",
@@ -435,6 +443,9 @@ class InputProcessor:
                                   )
                             GD[base_key][i_key][csv_param] = value
                         stored_params += 1
+                    else:
+                        if 'CC' not in base_key:
+                            GD[base_key][i_key][csv_param] = ''
                 row_num += 1
         H.say("INFO", "Done, stored ",
               stored_params,
@@ -616,6 +627,51 @@ class H:
             sys.exit(2)
 
     @staticmethod
+    def get_course_name(course):
+        return GD['C'][course]['Class Subject + Nbr']
+
+    @staticmethod
+    def get_equivalent_slots(time_slot):
+        """
+        Given a time_slot, returns a list of time slots which overlap on
+        at least one day.
+
+        :param time_slot:  MWF_9:10_10:00
+        :return: 'W_8:00_10:00', 'F_8:00_10:00', 'MWF_9:10_10:00', 'M_8:00_10:00'
+        """
+        H.say("DBG", "g_e_s in: ", time_slot)
+        # Variables
+        return_value = []
+
+        # Convert the input and do error checking.
+        e = H.get_time_slot_elements(time_slot)
+        start_time = int(H.get_time(e[1]))
+        end_time = int(H.get_time(e[2]))
+        if len(e) != 3:
+            H.say("ERROR", "invalid time slot: ", time_slot)
+        if start_time >= end_time:
+            print("ERROR", "start time greater than end time")
+        for t in (start_time, end_time):
+            if t < 0 or t > 2400:
+                H.say("ERROR", "invalid time: ", t)
+
+        # Do equivalent lookups for the start time and append them.
+        for ts in GD['T']:
+            ts_e = H.get_time_slot_elements(ts)
+            # enumerate the conditions over which a time slot is equivalent
+            c1 = H.get_time(e[1]) >= H.get_time(ts_e[1])
+            c2 = H.get_time(e[1]) <= H.get_time(ts_e[2])
+            c3 = H.get_time(e[2]) >= H.get_time(ts_e[1])
+            c4 = H.get_time(e[2]) <= H.get_time(ts_e[2])
+            c5 = H.check_day_equivalence(e[0], ts_e[0])
+            if ((c1 and c2) or (c3 and c4)) and c5:
+                return_value.append(ts)
+
+        # Do equivalent lookups for the end time and append them.
+        H.say("DBG", "g_e_s out: ", return_value)
+        return return_value
+
+    @staticmethod
     def get_random_number(hash_key):
         """
         method to generate a random number that will be between 0 and
@@ -647,29 +703,52 @@ class H:
         H.say("ERROR", "Unable to find a random course key for ", hash_key)
 
     @staticmethod
-    def get_random_element(key):
+    def get_random_element(key, course):
         """
         method to randomly get an element off a dict, but get only
         elements that haven't been "gotten" yet.
         Designed for use with generate_random_solutions, and only works
         on 'R', 'T' and 'I' dicts (they have 'AlreadyAssigned' key)
         :param key:
+        :param course:
         :return: element
         """
         H.say("DBG", "g_r_e in: ", key)
         import sys
+        import random
         counter = 0
-        random = H.get_random_number(key)
+        # Skip the random vs counter loop for instructors, since we will pull
+        # them off of a hash directly and randomly assign one of them
+        if 'I' in key:
+            r_n = 0
+        else:
+            r_n = H.get_random_number(key)
         e_id = ""  # for error message printing only
         for element_id in GD[key]:
             e_id = element_id
-            if counter == random:
+            if counter == r_n:
                 if GD[key][element_id]['AlreadyAssigned'] == "true":
                     GD[key][element_id]['AlreadyAssigned'] = "true"
-                    H.say("DBG", "g_r_e skip", element_id, " already assigned")
+                    H.say("DBG", "g_r_e skip ", element_id,
+                          " already assigned")
                     continue
+                # Pull an instructor randomly from a qualified pool
+                if 'I' in key:
+                    pool = GD['C'][course]['Instructors']
+                    pool_size = len(pool)
+                    name = H.get_course_name(course)[0]
+                    H.say("DBG", "g_r_e pool: ", pool)
+                    if pool_size < 1:
+                        H.say("ERROR", "No instructors for: ", name)
+                    elif pool_size == 1:
+                        element_id = pool[0]
+                    else:
+                        i_random = random.randrange(0, pool_size)
+                        element_id = pool[i_random]
+                    H.say("DBG", "g_r_e out(I): ", element_id)
+                    return element_id
                 else:
-                    H.say("DBG", "g_r_e out: ", element_id)
+                    H.say("DBG", "g_r_e out(R): ", element_id)
                     return element_id
             else:
                 counter += 1
@@ -752,7 +831,7 @@ class H:
         """
         H.say("DBG", "g_t_s in: ", solution, ":", course)
         if GD['C'][course]['TimeSlotAssigned'] == 'false':
-            time = H.get_random_element('T')
+            time = H.get_random_element('T', course)
             for t_key in GD['T'][time]:
                 GD['S'][solution][course][t_key] \
                     = GD['T'][time][t_key]
@@ -772,47 +851,6 @@ class H:
         return_value = time_slot.split('_')
         if len(return_value) != 3:
             H.say("ERROR", "Invalid time slot: ", time_slot)
-        return return_value
-
-    @staticmethod
-    def get_equivalent_slots(time_slot):
-        """
-        Given a time_slot, returns a list of time slots which overlap on
-        at least one day.
-
-        :param time_slot:  MWF_9:10_10:00
-        :return: 'W_8:00_10:00', 'F_8:00_10:00', 'MWF_9:10_10:00', 'M_8:00_10:00'
-        """
-        H.say("DBG", "g_e_s in: ", time_slot)
-        # Variables
-        return_value = []
-
-        # Convert the input and do error checking.
-        e = H.get_time_slot_elements(time_slot)
-        start_time = int(H.get_time(e[1]))
-        end_time = int(H.get_time(e[2]))
-        if len(e) != 3:
-            H.say("ERROR", "invalid time slot: ", time_slot)
-        if start_time >= end_time:
-            print("ERROR", "start time greater than end time")
-        for t in (start_time, end_time):
-            if t < 0 or t > 2400:
-                H.say("ERROR", "invalid time: ", t)
-
-        # Do equivalent lookups for the start time and append them.
-        for ts in GD['T']:
-            ts_e = H.get_time_slot_elements(ts)
-            # enumerate the conditions over which a time slot is equivalent
-            c1 = H.get_time(e[1]) >= H.get_time(ts_e[1])
-            c2 = H.get_time(e[1]) <= H.get_time(ts_e[2])
-            c3 = H.get_time(e[2]) >= H.get_time(ts_e[1])
-            c4 = H.get_time(e[2]) <= H.get_time(ts_e[2])
-            c5 = H.check_day_equivalence(e[0], ts_e[0])
-            if ((c1 and c2) or (c3 and c4)) and c5:
-                return_value.append(ts)
-
-        # Do equivalent lookups for the end time and append them.
-        H.say("DBG", "g_e_s out: ", return_value)
         return return_value
 
     @staticmethod
@@ -1020,6 +1058,13 @@ class Population:
         :return:
         """
         H.say("INFO", "Initializing resources...")
+        # Also add instructors from InstructorConstraints to GD['I'] dict
+        for ic in GD['IC']:
+            if ic not in GD['I']:
+                for i_param in GD['I_PARAMS']:
+                    GD['I'][ic][i_param] = GD['IC'][ic][i_param]
+                GD['I'][ic]['AlreadyAssigned'] = "false"
+
         num_resources = 0
         # Iterate over each time slot, and create resources for R and I
         s = 0
@@ -1056,6 +1101,42 @@ class Population:
                     eq_times = H.get_equivalent_slots(time)
                     H.manage_resource('IT', -1, instructor, eq_times, "book")
                     H.say("VERBOSE", " by instructor: ", instructor)
+
+        # Check and make sure that all offered courses will have instructors
+        courses_taught = ""
+        courses_not_taught = collections.defaultdict()
+        error_count = 0
+        H.say("DBG", "Courses taught:")
+        for ic in GD['IC']:
+            courses_taught += (GD['IC'][ic]['Courses Taught'])
+            H.say("DBG", GD['IC'][ic]['Courses Taught'])
+        H.say("DBG", "Courses offered:")
+        for c in GD['C']:
+            offered = GD['C'][c]['Class Subject + Nbr'][0]
+            H.say("DBG", offered, " section: ", GD['C'][c]['*Section'])
+            if courses_taught.find(offered) == -1:
+                courses_not_taught[offered] = ""
+                error_count += 1
+            GD['C'][c]['Instructors'] = []  # initialize a string for later
+        if error_count:
+            H.say("INFO", "These offered courses have no instructor\n",
+                  "constrained to teach them:"
+                  )
+            for cnt in courses_not_taught:
+                H.say("INFO", cnt)
+            H.say("ERROR", "Please fix in: ", GD['COURSE_CONSTRAINTS']
+                  )
+
+        # Add "instructors" entry to the 'C' dict so that we can do a
+        # direct lookup of instructors during instructor assignment.
+        for c in GD['C']:
+            c_name = H.get_course_name(c)[0]
+            for i in GD['IC']:
+                courses = GD['IC'][i]['Courses Taught']
+                # Don't know how to do lookup between c_name and c directly
+                # so do this the long way.
+                if courses.find(c_name) != -1:
+                    GD['C'][c]['Instructors'].append(i)
 
         H.say("INFO", "stored ",
                       num_forces, " assignments into resource calendar")
@@ -1100,7 +1181,8 @@ class Population:
             H.say("DBG1", "creating solution ", rs_counter)
             # course assignment
             for course in GD['C']:
-                H.say("DBG", "\nAssigning course: ", course)
+                course_name = GD['C'][course]['Class Subject + Nbr']
+                H.say("DBG", "\nAssigning course: ", course, ":", course_name)
                 for c_param in GD['C_PARAMS']:
                     GD['S'][rs_counter][course][c_param] \
                         = GD['C'][course][c_param]
@@ -1121,7 +1203,7 @@ class Population:
                         flag = False
                         try_counter = 0
                         while not flag:
-                            instructor = H.get_random_element('I')
+                            instructor = H.get_random_element('I', course)
                             eq_times = H.get_equivalent_slots(time)
                             flag = H.manage_resource('IT',
                                                      rs_counter,
@@ -1153,7 +1235,7 @@ class Population:
                         flag = False
                         try_counter = 0
                         while not flag:
-                            room = H.get_random_element('R')
+                            room = H.get_random_element('R', course)
                             eq_times = H.get_equivalent_slots(time)
                             flag = H.manage_resource('RT',
                                                      rs_counter,
@@ -1446,7 +1528,7 @@ class Population:
             et = unassigned_dict[u]['Element Type']
             ec = unassigned_dict[u]['Element Type Code']
             tc = unassigned_dict[u]['Resource Type Code']
-            new_element = H.get_random_element(ec)
+            new_element = H.get_random_element(ec, c)
             GD['S'][s][c][et] = new_element
             times = H.get_equivalent_slots(GD['S'][s][c]['Time Slot'])
             if "RT" in tc:
