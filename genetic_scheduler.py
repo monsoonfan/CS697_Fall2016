@@ -23,7 +23,9 @@
 # - need to kill solutions where time slots don't match minimum/maximum units,
 #   and perhaps add some preference for standard time slots?
 # - For new instructors not in the sample, have to add their info into
-#   InstructorConstraints.csv
+#   InstructorConstraints.csv.
+# - Speed issues, can be more efficient during random_solution_generation,
+#   some things are happening redundantly.
 #
 # Questions:
 # - strip() not working, and why whitespace in the first place
@@ -36,10 +38,8 @@
 # - Presentation of "Top solution preservation"
 #
 # Scratchpad:
-# - want time conversion functions from the same standalone engine:
-#   - list of equivalent time slots for a given time slot
-#   - numerical time for a given 24hr time
-#
+# - crossover, compare technique where parents breed exclusively vs non-excl.
+# - return if avg fitness starts to drop?
 #
 #
 #######################################################################
@@ -57,9 +57,9 @@ import operator
 #######################################################################
 GD = dict(
     DBG_ITERATION=0,
-    POPULATION=12,
-    CULL_SURVIVORS=6,
-    NUM_ITERATIONS=15,
+    POPULATION=4,
+    CULL_SURVIVORS=2,
+    NUM_ITERATIONS=10,
     NUM_SOLUTIONS_TO_RETURN=3,
     GENE_SWAP_PCT=50,
     CROSSOVER_TYPE="RANDOM_SINGLE",
@@ -74,7 +74,8 @@ GD = dict(
     ROOM_CONSTRAINTS='Data/RoomConstraints.csv',
     INSTRUCTOR_CONSTRAINTS='Data/InstructorConstraints.csv',
     HIGH_SCORE=20000,
-    INFO_LEVEL=3,  # see Helper.say()
+    HIGH_FITNESS_INDEX=0,
+    INFO_LEVEL=2,  # see Helper.say()
     LOGFILE=open('run.log', 'w'),
     DB_2LEVEL_PARAMS=["C", "I", "R", "S", "T", "CC"],
     DB_1LEVEL_PARAMS=["FC", "RC", "IC"],
@@ -1318,6 +1319,7 @@ class Population:
         H.say("LOG", "Evaluating fitness...")
         total_fitness = 0
         high_fitness = 0
+        high_fitness_index = 0
         for s in GD['S']:
             score = GD['HIGH_SCORE']
             for c in GD['S'][s]:
@@ -1365,7 +1367,6 @@ class Population:
             # instructed and add a penalty for each of them
 #            for i in GD['I']:
 
-
             # instructor workload = 'Instructor Workload'
             # count total number of students taught
             workload = 0
@@ -1375,8 +1376,12 @@ class Population:
             # 'F' dict so that they can be pulled off in sorted order
             GD['F'][s]['fitness'] = score
             total_fitness += score
-            high_fitness = max(score, high_fitness)
+            if score > high_fitness:
+                high_fitness = max(score, high_fitness)
+                high_fitness_index = s
         avg_fitness = round(total_fitness / len(GD['S']), 2)
+        GD['HIGH_FITNESS_INDEX'] = high_fitness_index
+        H.say("DBG1", "HFI: ", GD['HIGH_FITNESS_INDEX'])
 
         H.say("INFO", "Average fitness: ", avg_fitness,
               " \n                 High: ", high_fitness)
@@ -1421,6 +1426,13 @@ class Population:
             while p1 == p2:
                 p2 = H.get_random_number('S_COPY')
 
+            # store parents onto solution dict and remove them
+            # from S_COPY so they won't be selected again
+            H.copy_solution(p1, crossover_index, 'S_COPY', 'S')
+            crossover_index += 1
+            H.copy_solution(p2, crossover_index, 'S_COPY', 'S')
+            crossover_index += 1
+
             # create child 1 solution - p1 is the "dominant" parent
             # instructors are always the same
             H.copy_solution(p1, crossover_index, 'S_COPY', 'S')
@@ -1443,12 +1455,6 @@ class Population:
                 = GD['S'][crossover_index][p1_course]['Facility ID']
             crossover_index += 1
 
-            # store parents onto solution dict and remove them
-            # from S_COPY so they won't be selected again
-            H.copy_solution(p1, crossover_index, 'S_COPY', 'S')
-            crossover_index += 1
-            H.copy_solution(p2, crossover_index, 'S_COPY', 'S')
-            crossover_index += 1
             pass_num += 1
         H.say("VERBOSE", "Done crossover after ", pass_num-1, " passes.")
 
@@ -1494,6 +1500,9 @@ class Population:
         while unassigned_num < (GD['MUTATION_RATE']/100) * total_elements:
             # get random element and un-assign, update count
             random_s = H.get_random_number('S')
+            # preserve the top solution always
+            while random_s == GD['HIGH_FITNESS_INDEX']:
+                random_s = H.get_random_number('S')
             random_c = H.get_random_course('S', random_s)
             random_e = H.get_random_course_element()
             element = GD['S'][random_s][random_c][random_e]
@@ -1619,20 +1628,36 @@ class Population:
                     H.say("ERROR", "Unknown error opening ", file_name)
 
                 # print the header the first time around
+                count = 0
+                num_elements = len(GD['S_PARAMS'])
                 for s_param in GD['S_PARAMS']:
-                    print(s_param, file=fh, end=',')
+                    count += 1
+                    if count == num_elements:
+                        end_char = ''
+                    else:
+                        end_char = ','
+                    print(s_param, file=fh, end=end_char)
                 print(file=fh)
 
                 # print the data into rows
                 for c in GD['S'][s]:
+                    count = 0
                     for s_param in GD['S_PARAMS']:
+                        count += 1
+                        # element = ""
+                        if count == num_elements:
+                            end_char = ''
+                        else:
+                            end_char = ','
                         # some elements are stored as lists, some are not
                         if len(GD['S'][s][c][s_param]) == 1:
-                            print('"', GD['S'][s][c][s_param][0],
-                                  '"', file=fh, end=',')
+                            element = GD['S'][s][c][s_param][0]
                         else:
-                            print('"', GD['S'][s][c][s_param],
-                                  '"', file=fh, end=',')
+                            element = GD['S'][s][c][s_param]
+                        if element.find(',') != -1:
+                            element = '"' + element + '"'
+                        # print the actual line
+                        print(element.strip(), file=fh, end=end_char)
                     print(file=fh)
         H.say("INFO", "Done, returned ", solution_count, " solutions.")
 
@@ -1697,8 +1722,13 @@ class Main:
           )
 
     # Up next:
+    # - Debug 'freeing resource 0 at times'
+    #   - probably related to double-bookings
+    # - make target around matrix_viewer
     # - fix return_population output
     # - improve fitness function (including check_feasible)
+    # - work on top solution preservation, culling is messing with order
+    # - more crossover/mutation techniques, some research, etc.
 
     # Finish up and return, run fitness to sort, and return top N
     # ip.print_database_1level('RT')
