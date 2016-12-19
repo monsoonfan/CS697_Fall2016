@@ -40,7 +40,9 @@
 # Scratchpad:
 # - crossover, compare technique where parents breed exclusively vs non-excl.
 # - return if avg fitness starts to drop?
-#
+# - Should have done this purely OO, with objects for everything, especially
+#   solutions, then solution class could have it's own methods and make
+#   the code more organized
 #
 #######################################################################
 # Imports
@@ -59,8 +61,8 @@ GD = dict(
     DBG_ITERATION=0,
     POPULATION=4,
     CULL_SURVIVORS=2,
-    NUM_ITERATIONS=10,
-    NUM_SOLUTIONS_TO_RETURN=3,
+    NUM_ITERATIONS=5,
+    NUM_SOLUTIONS_TO_RETURN=1,
     GENE_SWAP_PCT=50,
     CROSSOVER_TYPE="RANDOM_SINGLE",
     MUTATION_RATE=5,
@@ -75,7 +77,7 @@ GD = dict(
     INSTRUCTOR_CONSTRAINTS='Data/InstructorConstraints.csv',
     HIGH_SCORE=20000,
     HIGH_FITNESS_INDEX=0,
-    INFO_LEVEL=2,  # see Helper.say()
+    INFO_LEVEL=3,  # see Helper.say()
     LOGFILE=open('run.log', 'w'),
     DB_2LEVEL_PARAMS=["C", "I", "R", "S", "T", "CC"],
     DB_1LEVEL_PARAMS=["FC", "RC", "IC"],
@@ -886,6 +888,28 @@ class H:
             return
 
     @staticmethod
+    def execute_management(resource_type, index, resource, time, mode):
+        """
+        Wrapper method to make error checking modular and re-usable
+
+        :param resource_type:
+        :param index:
+        :param resource:
+        :param time:
+        :param mode:
+        :return:
+        """
+        # Check for a valid mode.
+        if not (mode == "free" or mode == "busy"):
+            H.say("ERROR", "Invalid mode passed to execute_management(): ",
+                  mode)
+        # Check that the resource actually exists
+        if resource not in GD[resource_type][index]:
+            H.say("ERROR", "Trying to ", mode,
+                  " resource that doesn't exist: ", resource)
+        GD[resource_type][index][resource][time] = mode
+
+    @staticmethod
     def make_forced_assignment(course, db_type, key):
         """
         Helper method to generate_random_solutions, this one takes a key
@@ -944,10 +968,16 @@ class H:
         :param mode: book, free, or check
         :return: 0 or 1
         """
-        # determine the mode and process the request
         H.say("DBG", "m_r in: ", resource_type, ":", solution, ":",
               resource, ":", times, ":", mode)
-        # "Book" requests
+
+        # Error checkin on arguments.
+        if not ('RT' in resource_type or 'IT' in resource_type):
+            H.say("ERROR", "manage_resource() received illegal resource_type: ",
+                  resource_type)
+
+        # determine the mode and process the request
+        # Handle the "Book" requests
         if "book" in mode:
             H.say("VERBOSE", "booking resource ", resource,
                   " at times ", times
@@ -966,16 +996,16 @@ class H:
             # book times for a single solution
             else:
                 for time in times:
-                    # if GD[resource_type][solution][resource][time] == "free":
-                    GD[resource_type][solution][resource][time] = "busy"
-                    # else:
-                    #    H.say("ERROR", "Trying to book a busy resource!\n",
-                    #          resource, ":", time)
+                    #if GD[resource_type][solution][resource][time] == "free":
+                        GD[resource_type][solution][resource][time] = "busy"
+                    #else:
+                        #H.say("ERROR", "Trying to book a busy resource!\n",
+                              #resource, ":", time)
             H.say("DBG", "m_r returning True (busy)")
             return True
         # end "Book"
 
-        # "Free" requests
+        # Handle the "Free" requests
         elif "free" in mode:
             H.say("VERBOSE", "freeing resource ", resource,
                   " at times ", times
@@ -989,12 +1019,14 @@ class H:
                             H.say("WARN", "Trying to free resource that's\n",
                                   "already free, might want to check that",
                                   resource, ":", time)
-                        GD[resource_type][count][resource][time] = "free"
+                        H.execute_management(resource_type, count, resource,
+                                             time, "free")
                     count += 1
             # free times for a single solution
             else:
                 for time in times:
-                    GD[resource_type][solution][resource][time] = "free"
+                    H.execute_management(resource_type, solution, resource,
+                                         time, "free")
             H.say("DBG", "m_r returning True (free)")
             return True
         # End "free"
@@ -1182,7 +1214,9 @@ class Population:
             # course assignment
             for course in GD['C']:
                 course_name = GD['C'][course]['Class Subject + Nbr']
-                H.say("DBG", "\nAssigning course: ", course, ":", course_name)
+                course_section = GD['C'][course]['*Section']
+                H.say("DBG", "\nAssigning course: ",
+                      course, ":", course_name, ":", course_section)
                 for c_param in GD['C_PARAMS']:
                     GD['S'][rs_counter][course][c_param] \
                         = GD['C'][course][c_param]
@@ -1342,10 +1376,8 @@ class Population:
                     score -= int(penalty)
 
                 # time of day = 'Time of day'
-                # TODO: make a conversion of 24hr time and compare it
-                if '8:00' in GD['S'][s][c]['Start Time'] \
-                        or '17:30' in GD['S'][s][c]['Start Time']\
-                        or '19:00' in GD['S'][s][c]['Start Time']:
+                start_time = H.get_time(GD['S'][s][c]['Start Time'])
+                if start_time < 900 or start_time > 1700:
                     penalty = GD['FC']['Room Proximity']['Penalty']
                     score -= int(penalty)
 
@@ -1353,12 +1385,15 @@ class Population:
 
                 # wasted capacity in rooms = 'Wasted Capacity'
                 room_capacity = GD['RC'][room]['Capacity']
-                room_waste = (1 - (int(capacity)/int(room_capacity)))*100
+                room_util = (1 - (int(capacity)/int(room_capacity)))*100
                 # kill the solution if the room isn't big enough
-                if room_waste > 100:
+                if room_util > 100:
                     score = 0
+                # TODO: Also kill solutions that waste way too much
+#                if room_util < 5:
+#                    score = 0
                 else:
-                    if room_waste > GD['ROOM_CAPACITY_WASTE_THRESHOLD_PCT']:
+                    if room_util > GD['ROOM_CAPACITY_WASTE_THRESHOLD_PCT']:
                         penalty = GD['FC']['Wasted Capacity']['Penalty']
                         score -= int(penalty)
 
@@ -1506,7 +1541,7 @@ class Population:
             random_c = H.get_random_course('S', random_s)
             random_e = H.get_random_course_element()
             element = GD['S'][random_s][random_c][random_e]
-            instructor = GD['S'][random_s][random_c]['Instructor Name']
+            instructor = GD['S'][random_s][random_c]['Instructor Jan/Dana ID']
             room = GD['S'][random_s][random_c]['Facility ID']
             if "Facility ID" in random_e:
                 # only free the room resource in this case
@@ -1531,11 +1566,17 @@ class Population:
             times = H.get_equivalent_slots(
                 GD['S'][random_s][random_c]['Time Slot']
             )
+
+            # Kludge because sometimes things are a list, sometimes a string
+            if isinstance(room, list):
+                room_element = room[0]
+            else:
+                room_element = room
             if "RT" in r_type:
-                H.manage_resource(r_type, random_s, room[0], times, "free")
+                H.manage_resource(r_type, random_s, room_element, times, "free")
             else:
                 H.manage_resource(r_type, random_s, instructor, times, "free")
-                H.manage_resource("RT", random_s, room[0], times, "free")
+                H.manage_resource("RT", random_s, room_element, times, "free")
             unassigned_num += 1
 
         # Then go through each solution and re-assign random day/time/room
@@ -1699,6 +1740,8 @@ class Main:
     # Initial randomly generated population seed
     population = Population()
     population.generate_random_solutions()
+    #population.fitness()
+    #population.return_population()
 
     # Loop over the population and perform the genetic optimization
     iteration_count = 0
@@ -1723,9 +1766,8 @@ class Main:
 
     # Up next:
     # - Debug 'freeing resource 0 at times'
-    #   - probably related to double-bookings
+    #   - probably related to double-bookings(this looks like force assign related)
     # - make target around matrix_viewer
-    # - fix return_population output
     # - improve fitness function (including check_feasible)
     # - work on top solution preservation, culling is messing with order
     # - more crossover/mutation techniques, some research, etc.
