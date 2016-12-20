@@ -59,9 +59,9 @@ import operator
 #######################################################################
 GD = dict(
     DBG_ITERATION=0,
-    POPULATION=4,
-    CULL_SURVIVORS=2,
-    NUM_ITERATIONS=5,
+    POPULATION=12,
+    CULL_SURVIVORS=6,
+    NUM_ITERATIONS=10,
     NUM_SOLUTIONS_TO_RETURN=1,
     GENE_SWAP_PCT=50,
     CROSSOVER_TYPE="RANDOM_SINGLE",
@@ -630,6 +630,86 @@ class H:
             sys.exit(2)
 
     @staticmethod
+    def copy_solution(from_key, to_key, from_db, to_db):
+        """
+        Helper to perform the copy of all key/value pairs for a
+        solution entry in one dict to another
+        :param from_key:
+        :param to_key:
+        :param from_db:
+        :param to_db:
+        :return:
+        """
+        H.say("DBG", "Copying solution ", from_key,
+              " from ", from_key, " to ", to_key)
+        for c in GD[from_db][from_key]:
+            for param in GD['S_PARAMS']:
+                GD[to_db][to_key][c][param] = GD[from_db][from_key][c][param]
+
+    @staticmethod
+    def check_day_equivalence(reference, check):
+        """
+        Helper to check if days overlap between reference and check args
+
+        Example: MW would overlap with MWF time slot, and vice versa, but
+                 would not overlap with F time slot.
+                 TTh would not overlap with MW or MWF or F, but would
+                 overlap with T, Th, or TTh.
+
+        :param reference: compare against this arg, e.g. MWF
+        :param check: argument to check, e.g. MW
+        :return: True/False
+        """
+        # Swap out "Th" for "H" for easy comparisons
+        r = reference.replace("Th", "H")
+        c = check.replace("Th", "H")
+
+        # Iterate over elements of check and see if they occur in reference
+        for cc in c:
+            if cc in r:
+                return True
+
+        # Default case, return false
+        return False
+
+    @staticmethod
+    def check_forced(index, course, element_type):
+        if "Facility" in element_type:
+            forced_type = "RoomForced"
+        elif "Time" in element_type:
+            forced_type = "TimeForced"
+        elif "Instructor" in element_type:
+            forced_type = "InstructorForced"
+        else:
+            H.say("ERROR", "Unsupported type to check_forced(): ",
+                  element_type)
+        if forced_type in GD['S'][index][course]:
+            return True
+        return False
+
+    @staticmethod
+    def execute_management(resource_type, index, resource, time, mode):
+        """
+        Wrapper method to make error checking modular and re-usable
+
+        :param resource_type:
+        :param index:
+        :param resource:
+        :param time:
+        :param mode:
+        :return:
+        """
+        # Check for a valid mode.
+        if not (mode == "free" or mode == "busy"):
+            H.say("ERROR", "Invalid mode passed to execute_management(): ",
+                  mode)
+        # Check that the resource actually exists
+        if resource not in GD[resource_type][index]:
+            H.say("ERROR", "Trying to ", mode,
+                  " resource that doesn't exist: ", resource)
+        GD[resource_type][index][resource][time] = mode
+
+    @staticmethod
     def get_course_name(course):
         return GD['C'][course]['Class Subject + Nbr']
 
@@ -856,60 +936,6 @@ class H:
         return return_value
 
     @staticmethod
-    def check_day_equivalence(reference, check):
-        """
-        Helper to check if days overlap between reference and check args
-
-        Example: MW would overlap with MWF time slot, and vice versa, but
-                 would not overlap with F time slot.
-                 TTh would not overlap with MW or MWF or F, but would
-                 overlap with T, Th, or TTh.
-
-        :param reference: compare against this arg, e.g. MWF
-        :param check: argument to check, e.g. MW
-        :return: True/False
-        """
-        # Swap out "Th" for "H" for easy comparisons
-        r = reference.replace("Th", "H")
-        c = check.replace("Th", "H")
-
-        # Iterate over elements of check and see if they occur in reference
-        for cc in c:
-            if cc in r:
-                return True
-
-        # Default case, return false
-        return False
-
-    @staticmethod
-    def check_element_valid():
-        element_valid = 0
-        if element_valid == 1:
-            return
-
-    @staticmethod
-    def execute_management(resource_type, index, resource, time, mode):
-        """
-        Wrapper method to make error checking modular and re-usable
-
-        :param resource_type:
-        :param index:
-        :param resource:
-        :param time:
-        :param mode:
-        :return:
-        """
-        # Check for a valid mode.
-        if not (mode == "free" or mode == "busy"):
-            H.say("ERROR", "Invalid mode passed to execute_management(): ",
-                  mode)
-        # Check that the resource actually exists
-        if resource not in GD[resource_type][index]:
-            H.say("ERROR", "Trying to ", mode,
-                  " resource that doesn't exist: ", resource)
-        GD[resource_type][index][resource][time] = mode
-
-    @staticmethod
     def make_forced_assignment(course, db_type, key):
         """
         Helper method to generate_random_solutions, this one takes a key
@@ -936,23 +962,28 @@ class H:
                     GD['S'][key][course]['Instructor'] \
                         = H.get_id(GD['CC'][cc_key]['Instructor'])
                     GD['C'][course]['InstructorAssigned'] = "true"
+                    GD['S'][key][course]['InstructorForced'] = True
                 H.say("DBG", " force assign instructor")
                 if db_type == "R":
-                    room = GD['CC'][cc_key]['Room']
-                    room_capacity = GD['RC'][room]['Capacity']
-                    course_capacity = GD['C'][course]['Enrollment Cap'][0]
-                    if int(course_capacity) > int(room_capacity):
-                        H.say("ERROR", "Trying to assign course ",
-                              cc_course, " with capacity ",
-                              course_capacity, " to room ",
-                              room, " but will be over room capacity(",
-                              room_capacity, ")!"
-                              )
-                    else:
-                        GD['S'][key][course]['Room'] \
-                            = GD['CC'][cc_key]['Room']
-                        GD['C'][course]['RoomAssigned'] = "true"
-                    H.say("DBG", " force assign room")
+                    # Skip the case where course is assigned to instructor,
+                    # but not to a room.
+                    if 'Room' in GD['CC'][cc_key]:
+                        room = GD['CC'][cc_key]['Room']
+                        room_capacity = GD['RC'][room]['Capacity']
+                        course_capacity = GD['C'][course]['Enrollment Cap'][0]
+                        if int(course_capacity) > int(room_capacity):
+                            H.say("ERROR", "Trying to assign course ",
+                                  cc_course, " with capacity ",
+                                  course_capacity, " to room ",
+                                  room, " but will be over room capacity(",
+                                  room_capacity, ")!"
+                                  )
+                        else:
+                            GD['S'][key][course]['Room'] \
+                                = GD['CC'][cc_key]['Room']
+                            GD['C'][course]['RoomAssigned'] = "true"
+                            GD['S'][key][course]['RoomForced'] = True
+                        H.say("DBG", " force assign room")
                 # May need to support day/time assignment as well
 
     @staticmethod
@@ -1047,22 +1078,28 @@ class H:
             return False
 
     @staticmethod
-    def copy_solution(from_key, to_key, from_db, to_db):
+    def swap_elements(index, p1_course, p2_course, swap_type):
         """
-        Helper to perform the copy of all key/value pairs for a
-        solution entry in one dict to another
-        :param from_key:
-        :param to_key:
-        :param from_db:
-        :param to_db:
-        :return:
-        """
-        H.say("DBG", "Copying solution ", from_key,
-              " from ", from_key, " to ", to_key)
-        for c in GD[from_db][from_key]:
-            for param in GD['S_PARAMS']:
-                GD[to_db][to_key][c][param] = GD[from_db][from_key][c][param]
+        Swap elements on 'S' dict at given index if neither is a forced
+        assignment.
 
+        :param index:
+        :param p1_course:
+        :param p2_course:
+        :param swap_type:
+        :return: true if swapped
+        """
+        c1 = H.check_forced(index, p1_course, swap_type)
+        c2 = H.check_forced(index, p2_course, swap_type)
+        if c1 or c2:
+            H.say("DBG", "s_e: skipping swap, one of elements was forced")
+            return False
+        else:
+            temp = GD['S'][index][p1_course][swap_type]
+            GD['S'][index][p1_course][swap_type] = \
+                GD['S'][index][p2_course][swap_type]
+            GD['S'][index][p2_course][swap_type] = temp
+            return True
 
 #######################################################################
 # Population processing class
@@ -1468,26 +1505,26 @@ class Population:
             H.copy_solution(p2, crossover_index, 'S_COPY', 'S')
             crossover_index += 1
 
-            # create child 1 solution - p1 is the "dominant" parent
-            # instructors are always the same
+            # Create child 1 solution - p1 is the "dominant" parent
+            # instructors are always the same, don't swap if the room
+            # or time is fixed by constraint.
             H.copy_solution(p1, crossover_index, 'S_COPY', 'S')
             p1_course = H.get_random_course('S_COPY', p1)
             p2_course = H.get_random_course('S_COPY', p2)
             H.say("VERBOSE", " swapping rooms for ",
                   p1_course, ",", p2_course)
-            GD['S'][crossover_index][p1_course]['Facility ID'] \
-                = GD['S'][crossover_index][p2_course]['Facility ID']
+            H.swap_elements(crossover_index, p1_course, p2_course,
+                            'Facility ID')
             crossover_index += 1
 
-            # create child 2 solution - p2 is the "dominant" parent
-            # instructors are always the same
+            # Create child 2 solution - p2 is the "dominant" parent.
             H.copy_solution(p2, crossover_index, 'S_COPY', 'S')
             p1_course = H.get_random_course('S_COPY', p1)
             p2_course = H.get_random_course('S_COPY', p2)
             H.say("VERBOSE", " swapping rooms for ",
                   p1_course, ",", p2_course)
-            GD['S'][crossover_index][p2_course]['Facility ID'] \
-                = GD['S'][crossover_index][p1_course]['Facility ID']
+            H.swap_elements(crossover_index, p1_course, p2_course,
+                            'Facility ID')
             crossover_index += 1
 
             pass_num += 1
@@ -1534,12 +1571,16 @@ class Population:
         # Perform the un-assignment
         while unassigned_num < (GD['MUTATION_RATE']/100) * total_elements:
             # get random element and un-assign, update count
-            random_s = H.get_random_number('S')
-            # preserve the top solution always
+            random_s = GD['HIGH_FITNESS_INDEX']
+            # preserve the top solution always: TODO fix this
             while random_s == GD['HIGH_FITNESS_INDEX']:
                 random_s = H.get_random_number('S')
             random_c = H.get_random_course('S', random_s)
             random_e = H.get_random_course_element()
+            # skip if it was assigned by forced assignment
+            if H.check_forced(random_s, random_c, random_e):
+                H.say("DBG1", "skipping mutation of forced assignment")
+                continue
             element = GD['S'][random_s][random_c][random_e]
             instructor = GD['S'][random_s][random_c]['Instructor Jan/Dana ID']
             room = GD['S'][random_s][random_c]['Facility ID']
@@ -1580,7 +1621,7 @@ class Population:
             unassigned_num += 1
 
         # Then go through each solution and re-assign random day/time/room
-        # for all un-assigned elements
+        # for all un-assigned elements.
         for u in unassigned_dict:
             s = unassigned_dict[u]['Solution']
             c = unassigned_dict[u]['Course']
@@ -1590,6 +1631,8 @@ class Population:
             new_element = H.get_random_element(ec, c)
             GD['S'][s][c][et] = new_element
             times = H.get_equivalent_slots(GD['S'][s][c]['Time Slot'])
+            # Still need to check resources even though they were unassigned
+            # and freed? Let's check anyway.
             if "RT" in tc:
                 H.manage_resource("IT", s, ec, times, "book")
             else:
@@ -1740,8 +1783,8 @@ class Main:
     # Initial randomly generated population seed
     population = Population()
     population.generate_random_solutions()
-    #population.fitness()
-    #population.return_population()
+    population.fitness()
+    population.return_population()
 
     # Loop over the population and perform the genetic optimization
     iteration_count = 0
