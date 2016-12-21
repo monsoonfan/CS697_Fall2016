@@ -1,19 +1,14 @@
 # CS697_Fall2016
-GeneticScheduler
-------------------------------------
-Description of program control flow
-------------------------------------
+## GeneticScheduler
+### Description of program control flow
 
---------------------------------------------
-Data structures, and how they are populated
---------------------------------------------
+#### Data structures, and how they are populated
 There is a global dictionary called GD, all global data is stored on it. There
 are several dictionaries on GD that store all the data and constraints for the
 program. Following is a description of each structure.
 
-Parameter dictionaries:
------------------------
-- This is where you tell the CSV parser what parameters to look
+##### Parameter dictionaries:
+This is where you tell the CSV parser what parameters to look
 for within a CSV file and store in the constraints dictionaries.
 Enumeration of types of parameters to specify:
 
@@ -33,9 +28,8 @@ Example (will store "Facility ID" and "Wait List Cap" into GD['R'] dictionary:
 		                  "Wait List Cap",
 				  ]
 
-Constraints dictionaries:
--------------------------
-- These will store the constraints specified by the parameters
+##### Constraints dictionaries:
+These will store the constraints specified by the parameters
 above. They are kept in different dictionaries by category for clarity. Here's an
 enumeration of the possible parameters, along with the CSV file that is read to
 populate them (all CSVs are read from "Data/" dir):
@@ -55,9 +49,8 @@ GD['RC'] ->
             [room_key] ->                 (this is an integer)
 	                  <param> = value
 
-Solutions dictionaries:
--------------------------
-- these are where the data for the population of solutions is stored. There are
+##### Solutions dictionaries:
+these are where the data for the population of solutions is stored. There are
 two of them:
 
 GD['S']      = this is the big dictionary used to store the population of
@@ -85,9 +78,8 @@ Example - this would assign 069-224 as the room for "SOFTWARE ARCHITECTURE",
 GD['S'][3][10912_1]['Facility ID'] = "069-224"
 
 
-Special dictionary:
---------------------
-generate_random_solutions and mutation should check these, maybe even crossover:
+##### Special dictionary:
+generate_random_solutions, crossover, and mutation will check these
 
 RT - this one is basically the resource calendar for rooms at each enumerated time slot
 IT - same as RT for instructors
