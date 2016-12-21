@@ -12,6 +12,22 @@ Num | Name | Purpose
 
 For details about each method, please refer to the docstring comments.
 
+### Variables
+These are the main configurable varaibles to dictate program operations. They all exist
+inside the 'GD' global dictionary. There are other variables in that dictionary that are
+there for internal program operation only.
+
+Variable | Description
+--- | --- | ---
+POPULATION | Number of solutions in the population, ust be 4 or greater. Testing was done with sizes up to 100 solutions. Recommend an even number.
+CULL_SURVIVORS | Make this number exactly half of POPULATION. To be deprecated.
+NUM_ITERATIONS | Will give this many iterations of crossover, and one less of mutations.
+HIGH_SCORE | Determines the starting score of each solution before fitness() asseses penalties
+INFO_LEVEL | Configures the level of output detail. 1 is minimum, 2 will be verbose, 3 will give DBG level of detail.
+MUTATION_RATE | This is a percentage, and mutation will affect this percent of the elements of the total population. With default setting of 5, that means 5% of the population's room or day/time assignements will get mutated.
+ROOM_CAPACITY_WASTE_THRESHOLD_PCT | If a room is utilized below this amount, a penalty will be assesed during fitness(). Meaning, a class with a cap of 10 students in a room with a cap of 100 would get a penalty with a setting of 10% or higher.
+UNIMPLEMENTED_BELOW_THIS_DUMMY_VAR | All variables below this in the dictionary either are not implemented, or are for internal use only.
+
 ### Data structures, and how they are populated
 There is a global dictionary called GD, all global data is stored on it. There
 are several dictionaries on GD that store all the data and constraints for the

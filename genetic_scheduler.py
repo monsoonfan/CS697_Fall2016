@@ -58,16 +58,18 @@ import operator
 # value, have to reference the 0th element of the list to get value
 #######################################################################
 GD = dict(
-    DBG_ITERATION=0,
-    POPULATION=4,
-    CULL_SURVIVORS=2,
+    POPULATION=8,
+    CULL_SURVIVORS=4,
     NUM_ITERATIONS=10,
     NUM_SOLUTIONS_TO_RETURN=1,
+    MUTATION_RATE=5,
+    HIGH_SCORE=20000,
+    INFO_LEVEL=1,  # see Helper.say()
+    ROOM_CAPACITY_WASTE_THRESHOLD_PCT=25,
+    UNIMPLEMENTED_BELOW_THIS_DUMMY_VAR=True,
     GENE_SWAP_PCT=50,
     CROSSOVER_TYPE="RANDOM_SINGLE",
-    MUTATION_RATE=5,
     MUTATION_SEVERITY=10,
-    ROOM_CAPACITY_WASTE_THRESHOLD_PCT=25,
     CSV_IN='Data/ScheduleOfClassesSample.csv',
     CSV_NUM_LINES=0,
     CSV_NUM_ERRORS=0,
@@ -75,9 +77,7 @@ GD = dict(
     FITNESS_CONSTRAINTS='Data/FitnessConstraints.csv',
     ROOM_CONSTRAINTS='Data/RoomConstraints.csv',
     INSTRUCTOR_CONSTRAINTS='Data/InstructorConstraints.csv',
-    HIGH_SCORE=20000,
     HIGH_FITNESS_INDEX=0,
-    INFO_LEVEL=1,  # see Helper.say()
     LOGFILE=open('run.log', 'w'),
     DB_2LEVEL_PARAMS=["C", "I", "R", "S", "T", "CC"],
     DB_1LEVEL_PARAMS=["FC", "RC", "IC"],
@@ -1350,7 +1350,7 @@ class Population:
         num_forces = 0
         # Loop over all solutions.
         while rs_counter < GD['POPULATION']:
-            H.say("DBG1", "creating solution [", rs_counter, "]")
+            H.say("INFO", "creating solution [", rs_counter, "]")
             # First loop over all course constraints
             for course in GD['C']:
                 course_name = GD['C'][course]['Class Subject + Nbr']
@@ -1396,10 +1396,13 @@ class Population:
                         # This is the case where no time slot is forced.
                         else:
                             time_valid = False
+                            time_try = 0
+                            max_tries = len(GD['T'])
                             while not time_valid:
                                 # if not, will set false during while
                                 time_valid = True
                                 time = H.get_time_slot(rs_counter, course)
+                                time_try += 1
                                 H.say("DBG", " trying time: ", time)
                                 if 'Instructor' in GD['CC'][cc]:
                                     instructor = H.get_id(
@@ -1425,6 +1428,13 @@ class Population:
                                         )
                                 if room == "":
                                     time_valid = False
+                                if time_try == max_tries:
+                                    H.say("WARN",
+                                          "Exceeded max tries, forced ",
+                                          "assignments will not take ",
+                                          "effect for this solution.\n",
+                                          "TODO: kill later through culling")
+                                    break
                 # Make the actual assignment
                 if not (instructor == "") and not (room == ""):
                     H.say("DBG", "making forced assignments for ",
@@ -1458,8 +1468,6 @@ class Population:
                         time_valid = True
                         time = H.get_time_slot(rs_counter, course)
                         H.say("DBG", " trying time: ", time)
-                        if "EE 348" in course_name:
-                            H.say("DBG", "TODO DBG REMOVE")
                         instructor = H.get_resource(rs_counter,
                                                     course,
                                                     time,
@@ -1608,7 +1616,7 @@ class Population:
                 high_fitness_index = s
         avg_fitness = round(total_fitness / len(GD['S']), 2)
         GD['HIGH_FITNESS_INDEX'] = high_fitness_index
-        H.say("DBG1", "HFI: ", GD['HIGH_FITNESS_INDEX'])
+        H.say("DBG", "HFI: ", GD['HIGH_FITNESS_INDEX'])
 
         H.say("INFO", "Average fitness: ", avg_fitness,
               " \n                 High: ", high_fitness)
@@ -1955,7 +1963,6 @@ class Main:
             # idea: mutate only every nth iteration??
             population.mutate()
         iteration_count += 1
-        GD['DBG_ITERATION'] = iteration_count
     # End the loop
     H.say("INFO", "Performed ",
           GD['NUM_ITERATIONS'],
