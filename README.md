@@ -10,6 +10,8 @@ Num | Name | Purpose
 2 | H | helper methods, the name "H" keeps lines of code shorter
 3 | Population | methods for the specific tasks related to the population
 
+For details about each method, please refer to the docstring comments.
+
 ### Data structures, and how they are populated
 There is a global dictionary called GD, all global data is stored on it. There
 are several dictionaries on GD that store all the data and constraints for the
@@ -30,18 +32,16 @@ S | Solutions | For solutions, these are output parameters, not input, so this i
 
 GD['*_PARAMS'] -> [param] = value
 		 
-##### Example (will store "Facility ID" and "Wait List Cap" into GD['R'] dictionary):
+##### Example (will store "Facility ID" and "Wait List Cap" into GD['R'] dictionary)
 
-> GD['R_PARAMS']=[
-      "Facility ID",
-      "Wait List Cap"
-      ]
-				  ]
+> GD['R_PARAMS']=["Facility ID","Wait List Cap"]
+
+
 #### Constraints dictionaries:
 These will store the constraints specified by the parameters
 above. They are kept in different dictionaries by category for clarity. Here's an
 enumeration of the possible parameters, along with the CSV file that is read to
-populate them (all CSVs are read from "Data/" dir):
+populate them (all CSVs are read from "Data/" dir)
 
 Key | File | Description
 --- | --- | ---
@@ -50,7 +50,7 @@ FC | FitnessConstraints.csv | specify constraints for the fitness function here
 RC | RoomConstraints.csv |constraints for the room such as capacity and labs taught go in here. The building the room is in is also stored here and is needed for the fitness function
 IC | InstructorConstraints.csv | specify the constraints for the instructor here as per the example on github. These constraints are used during fitness
 
-##### Mapping of structures:
+##### Example mapping of constraints dictionaries:
 GD['RC'] -> [room_key] -> [param] = value
 
 #### Solutions dictionaries:
@@ -69,10 +69,9 @@ GD['S_COPY'] = used as a temporary dictionary to copy data into DB manipulation,
 
 GD['S'] -> [solution_key] -> [course_key] -> <s_param> = value
 
-> solution_key: ( this is an integer)
-  course_key: ( this is a number comprised of '*Course ID' and '*Section' fields from the "ScheduleOfClassesSample.csv")
+> solution_key: ( this is an integer)                                  course_key: ( this is a number comprised of '*Course ID' and '*Section' fields from the "ScheduleOfClassesSample.csv")
 
-Example - this would assign 069-224 as the room for "SOFTWARE ARCHITECTURE",
+##### Example - this would assign 069-224 as the room for "SOFTWARE ARCHITECTURE",
           Section #1 for the 4th solution on the 'S' dictionary:
 	  
 GD['S'][3][10912_1]['Facility ID'] = "069-224"
@@ -80,7 +79,11 @@ GD['S'][3][10912_1]['Facility ID'] = "069-224"
 #### Special dictionary:
 generate_random_solutions, crossover, and mutation will check these
 
-RT - this one is basically the resource calendar for rooms at each enumerated time slot
-IT - same as RT for instructors
-
-RT[room_key] -> [time_key] = "busy" or "free"
+Key | Notes
+--- | ---
+RT | this one is basically the resource calendar for rooms at each enumerated time slot
+IT | same as RT for instructors
+   | RT[room_key] -> [time_key] = "busy" or "free"
+F | keeps track of fitness scores
+  | F[solution_number] -> ['fitness'] = score
+CD | Stores the sorted solution keys
