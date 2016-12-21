@@ -71,8 +71,7 @@ GD['S'] -> [solution_key] -> [course_key] -> <s_param> = value
 
 > solution_key: ( this is an integer)                                  course_key: ( this is a number comprised of '*Course ID' and '*Section' fields from the "ScheduleOfClassesSample.csv")
 
-##### Example - this would assign 069-224 as the room for "SOFTWARE ARCHITECTURE",
-          Section #1 for the 4th solution on the 'S' dictionary:
+##### Example - this would assign 069-224 as the room for "SOFTWARE ARCHITECTURE", Section #1 for the 4th solution on the 'S' dictionary:
 	  
 GD['S'][3][10912_1]['Facility ID'] = "069-224"
 

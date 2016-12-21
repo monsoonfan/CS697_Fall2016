@@ -16,3 +16,5 @@ Data/ScheduleSampleHeader.txt
 
 697shell
 Data/InstructorConstraintsFull.csv
+Data/CourseConstraints.short.csv
+Data/CourseConstraints.long.csv

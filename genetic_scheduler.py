@@ -59,8 +59,8 @@ import operator
 #######################################################################
 GD = dict(
     DBG_ITERATION=0,
-    POPULATION=12,
-    CULL_SURVIVORS=6,
+    POPULATION=4,
+    CULL_SURVIVORS=2,
     NUM_ITERATIONS=10,
     NUM_SOLUTIONS_TO_RETURN=1,
     GENE_SWAP_PCT=50,
@@ -77,7 +77,7 @@ GD = dict(
     INSTRUCTOR_CONSTRAINTS='Data/InstructorConstraints.csv',
     HIGH_SCORE=20000,
     HIGH_FITNESS_INDEX=0,
-    INFO_LEVEL=3,  # see Helper.say()
+    INFO_LEVEL=1,  # see Helper.say()
     LOGFILE=open('run.log', 'w'),
     DB_2LEVEL_PARAMS=["C", "I", "R", "S", "T", "CC"],
     DB_1LEVEL_PARAMS=["FC", "RC", "IC"],
@@ -114,6 +114,11 @@ GD = dict(
               "Primary Instruction Section",
               "*Course ID",
               "Status",
+              "Campus",
+              "Component Cd",
+              "Maximum Units",
+              "Minimum Units",
+              "Consent Required",
               ],
     I_PARAMS=["Instructor Name",
               "Instructor Email",
@@ -192,6 +197,11 @@ GD = dict(
               "Instructor Department",
               "Instructor Building",
               "Building",
+              "Campus",
+              "Component Cd",
+              "Maximum Units",
+              "Minimum Units",
+              "Consent Required",
               ]
 )
 
@@ -270,16 +280,13 @@ class InputProcessor:
                 # TODO: error check here, see if already exists and diff
                 for c_param in GD['C_PARAMS']:
                     GD['C'][course_key][c_param] = [row[c_param]]
-                GD['C'][course_key]['TimeSlotAssigned'] = "false"
-                GD['C'][course_key]['RoomAssigned'] = "false"
-                GD['C'][course_key]['InstructorAssigned'] = "false"
                 # store room information
                 if room_key == '' or room_key == ' ':
                     H.say("LOG", "Missing room info from row ", row_num+1)
                     continue
                 for r_param in GD['R_PARAMS']:
                     GD['R'][room_key][r_param] = [row[r_param]]
-                GD['R'][room_key]['AlreadyAssigned'] = "false"
+
                 # store instructor information
                 if instructor_key == '' or instructor_key == ' ':
                     H.say("LOG", "Missing instructor info from row ",
@@ -293,7 +300,6 @@ class InputProcessor:
                               )
                         continue
                     GD['I'][instructor_key][i_param] = [row[i_param]]
-                GD['I'][instructor_key]['AlreadyAssigned'] = "false"
                 row_num += 1
         H.say("INFO", "Done pre-processing, found ",
               GD['CSV_NUM_LINES'], " lines, ",
@@ -731,7 +737,7 @@ class H:
         start_time = int(H.get_time(e[1]))
         end_time = int(H.get_time(e[2]))
         if len(e) != 3:
-            H.say("ERROR", "invalid time slot: ", time_slot)
+            H.say("ERROR", "g_e_s: invalid time slot: ", time_slot)
         if start_time >= end_time:
             print("ERROR", "start time greater than end time")
         for t in (start_time, end_time):
@@ -810,11 +816,6 @@ class H:
         for element_id in GD[key]:
             e_id = element_id
             if counter == r_n:
-                if GD[key][element_id]['AlreadyAssigned'] == "true":
-                    GD[key][element_id]['AlreadyAssigned'] = "true"
-                    H.say("DBG", "g_r_e skip ", element_id,
-                          " already assigned")
-                    continue
                 # Pull an instructor randomly from a qualified pool
                 if 'I' in key:
                     pool = GD['C'][course]['Instructors']
@@ -845,8 +846,7 @@ class H:
             "There aren't enough of one of the following:\n",
             "day/time slots, instructors, or rooms\n\n",
             "Was trying: \n",
-            e_id, ": ",
-            GD[key][e_id]['AlreadyAssigned']
+            e_id,
         )
         sys.exit(2)
 
@@ -886,6 +886,62 @@ class H:
                   " but could not find one.")
 
     @staticmethod
+    def get_resource(rs_counter, course, time, code):
+        """
+        Return a semi-randomly assigned resource (obeys constraints), but this
+        assumes that it does not need to check for forced assignments.
+
+        :param rs_counter:
+        :param course:
+        :param time:
+        :param code:
+        :return:
+        """
+        if "I" in code:
+            r_type = 'I'
+            r_key1 = 'InstructorAssigned'
+            r_key2 = 'Instructor'
+            num_to_try = len(GD['C'][course]['Instructors'])
+            check_code = 'IT'
+        elif "R" in code:
+            r_type = 'R'
+            r_key1 = 'RoomAssigned'
+            r_key2 = 'Room'
+            num_to_try = len(GD['R'])
+            check_code = 'RT'
+        else:
+            H.say("ERROR", "get_resource() was passed unknown type: ", code)
+            return
+
+        # Forced assignments first
+        # H.make_forced_assignment(course, r_type, rs_counter, code)
+
+        # Iterate until available resource found
+        flag = False
+        try_counter = 0
+        # if GD['C'][course][r_key1] == 'false':
+        while not flag:
+            if try_counter == num_to_try:
+                H.say("DBG", "all ", r_type, " busy at ", time)
+                return ""
+                break
+            resource = H.get_random_element(code, course)
+            eq_times = H.get_equivalent_slots(time)
+            flag = H.manage_resource(check_code,
+                                     rs_counter,
+                                     resource,
+                                     eq_times,
+                                     "check"
+                                     )
+            try_counter += 1
+
+        if flag:
+            H.say("DBG", "get_resources returning ", r_type, " : ", resource)
+            return resource
+        else:
+            return ""
+
+    @staticmethod
     def get_time(time):
         """
         Helper to convert 24hr time into an integer.
@@ -911,13 +967,11 @@ class H:
         :param course: key from GD['S'][solution] hash
         :return:
         """
-        H.say("DBG", "g_t_s in: ", solution, ":", course)
-        if GD['C'][course]['TimeSlotAssigned'] == 'false':
-            time = H.get_random_element('T', course)
-            for t_key in GD['T'][time]:
-                GD['S'][solution][course][t_key] \
-                    = GD['T'][time][t_key]
-                GD['S'][solution][course]['Time Slot'] = time
+        H.say("DBG", "g_t_s in: ", solution, ":", course, ":")
+        time = H.get_random_element('T', course)
+#        for t_key in GD['T'][time]:
+#            GD['S'][solution][course][t_key] = GD['T'][time][t_key]
+#        GD['S'][solution][course]['Time Slot'] = time
         H.say("DBG,", "g_t_s out: ", time)
         return time
 
@@ -932,38 +986,109 @@ class H:
         """
         return_value = time_slot.split('_')
         if len(return_value) != 3:
-            H.say("ERROR", "Invalid time slot: ", time_slot)
+            H.say("ERROR", "g_t_s_e: Invalid time slot: ", time_slot)
         return return_value
 
     @staticmethod
-    def make_forced_assignment(course, db_type, key):
+    def make_assignment(solution, course, resource, time, mode):
+        """
+        Helper method to assign the given resource at a given time for the
+        given course within the solution.
+
+        :param solution:
+        :param course:
+        :param resource:
+        :param time:
+        :param mode:
+        :return:
+        """
+        # Instructor + ( time + course params <- only do these once)
+        if "instructor" in mode:
+            if resource == 'jdp85':
+                H.say("DBG", "TODO DBG REMOVE")
+            for i_key in GD['I'][resource]:
+                if i_key == "Instructor Name" and GD['I'][resource][i_key] == "":
+                    H.say("DBG", "TODO DBG REMOVE")
+                GD['S'][solution][course][i_key] \
+                    = GD['I'][resource][i_key]
+            for ic_key in GD['IC'][resource]:
+                if GD['IC'][resource][ic_key] != "":
+                    GD['S'][solution][course][ic_key] \
+                        = GD['IC'][resource][ic_key]
+            times = H.get_equivalent_slots(time)
+            H.say("DBG", " resource: ", resource)
+            H.manage_resource('IT', solution, resource,
+                              times, "book")
+            # Time
+            for t_key in GD['T'][time]:
+                GD['S'][solution][course][t_key] = GD['T'][time][t_key]
+            GD['S'][solution][course]['Time Slot'] = time
+
+            # Course params
+            for c_param in GD['C_PARAMS']:
+                GD['S'][solution][course][c_param] = GD['C'][course][c_param]
+
+        # Room
+        if "room" in mode:
+            GD['S'][solution][course]['Facility ID'] \
+                = GD['R'][resource]['Facility ID']
+            GD['S'][solution][course]['Building'] \
+                = GD['RC'][resource]['Building']
+            GD['S'][solution][course]['Unit'] \
+                = GD['C'][course]['Unit']
+            times = H.get_equivalent_slots(time)
+            H.manage_resource('RT', solution, resource, times, "book")
+
+    # TODO: test without and remove this method
+    @staticmethod
+    def make_forced_assignment(solution, course, time, db_type):
         """
         Helper method to generate_random_solutions, this one takes a key
         from the GD['C'] courses hash and a type of assignment ('I', 'R', etc)
         and makes a forced assignment if one needs to be made so that it's
         not randomly generated
 
+        :param solution:
+        :param course:
+        :param time:
+        :param db_type:
         :return:
         """
-        H.say("DBG", "m_f_a in: ", course, ":", db_type, ":", key)
+        H.say("DBG", "m_f_a in: ", solution, ":", course, ":", time,
+              ":", db_type)
         forced = 0
+        eq_times = H.get_equivalent_slots(time)
         for cc_key in GD['CC']:
-            cc_course = GD['CC'][cc_key]['Course']
-            cc_section = GD['CC'][cc_key]['Section']
-            c_course = GD['C'][course]['Class Subject + Nbr'][0]
-            c_section = GD['C'][course]['*Section'][0]
-            if cc_course == c_course and cc_section == c_section:
-                forced += 1
-                H.say("VERBOSE", "Making forced (", db_type,
-                      ") assignment for:\n",
-                      c_course, " section ", c_section
-                      )
-                if db_type == "I":
-                    GD['S'][key][course]['Instructor'] \
-                        = H.get_id(GD['CC'][cc_key]['Instructor'])
-                    GD['C'][course]['InstructorAssigned'] = "true"
-                    GD['S'][key][course]['InstructorForced'] = True
-                H.say("DBG", " force assign instructor")
+                cc_course = GD['CC'][cc_key]['Course']
+                cc_section = GD['CC'][cc_key]['Section']
+                c_course = GD['C'][course]['Class Subject + Nbr'][0]
+                c_section = GD['C'][course]['*Section'][0]
+                if cc_course == c_course and cc_section == c_section:
+                    forced += 1
+                    H.say("VERBOSE", "Making forced (", db_type,
+                          ") assignment for:\n",
+                          c_course, " section ", c_section
+                          )
+
+                    # Deal with instructors
+                    if db_type == "I":
+                        instructor = H.get_id(GD['CC'][cc_key]['Instructor'])
+                        flag = H.manage_resource('IT',
+                                                 solution,
+                                                 instructor,
+                                                 eq_times,
+                                                 "check"
+                                                 )
+                    # Error out if resource busy, this would indicate that
+                    # constraints file has them double-booked.
+                    if not flag:
+                        H.say("ERROR", "Trying to force assign busy resource:",
+                              instructor, " @ ", time,
+                              "\nCheck our CourseConstraints.")
+                    H.say("DBG", " force assign instructor: ", instructor)
+                    return instructor
+
+                # Deal with roms
                 if db_type == "R":
                     # Skip the case where course is assigned to instructor,
                     # but not to a room.
@@ -979,12 +1104,25 @@ class H:
                                   room_capacity, ")!"
                                   )
                         else:
-                            GD['S'][key][course]['Room'] \
-                                = GD['CC'][cc_key]['Room']
-                            GD['C'][course]['RoomAssigned'] = "true"
-                            GD['S'][key][course]['RoomForced'] = True
-                        H.say("DBG", " force assign room")
+                            flag = H.manage_resource('IT',
+                                                     solution,
+                                                     room,
+                                                     eq_times,
+                                                     "check"
+                                                     )
+                            # Error out if room not free
+                            if not flag:
+                                H.say("ERROR",
+                                      "Trying to force assign busy room: ",
+                                      room, " @ ", time)
+                            # Else make the assignment'
+                            H.say("DBG", " force assign room: ", room)
+                            return room
+
                 # May need to support day/time assignment as well
+
+        # If we fall through to here, no forced assignment needs to be made.
+        return ""
 
     @staticmethod
     def manage_resource(resource_type, solution, resource, times, mode):
@@ -1013,25 +1151,12 @@ class H:
             H.say("VERBOSE", "booking resource ", resource,
                   " at times ", times
                   )
-            # need to book or free times for all solutions if -1 is passed in
-            if solution < 0:
-                count = 0
-                while count < GD['POPULATION']:
-                    for time in times:
-                        if GD[resource_type][count][resource][time] == "free":
-                            GD[resource_type][count][resource][time] = "busy"
-                        else:
-                            H.say("ERROR", "Trying to book a busy resource!\n",
-                                  resource, ":", time)
-                    count += 1
-            # book times for a single solution
-            else:
-                for time in times:
-                    #if GD[resource_type][solution][resource][time] == "free":
-                        GD[resource_type][solution][resource][time] = "busy"
-                    #else:
-                        #H.say("ERROR", "Trying to book a busy resource!\n",
-                              #resource, ":", time)
+            for time in times:
+                #if GD[resource_type][solution][resource][time] == "free":
+                GD[resource_type][solution][resource][time] = "busy"
+                #else:
+                #H.say("ERROR", "Trying to book a busy resource!\n",
+                #resource, ":", time)
             H.say("DBG", "m_r returning True (busy)")
             return True
         # end "Book"
@@ -1042,36 +1167,33 @@ class H:
                   " at times ", times
                   )
             # need to book or free times for all solutions if -1 is passed in
-            if solution < 0:
-                count = 0
-                while count < GD['POPULATION']:
-                    for time in times:
-                        if GD[resource_type][count][resource][time] == "free":
-                            H.say("WARN", "Trying to free resource that's\n",
-                                  "already free, might want to check that",
-                                  resource, ":", time)
-                        H.execute_management(resource_type, count, resource,
-                                             time, "free")
-                    count += 1
-            # free times for a single solution
-            else:
-                for time in times:
-                    H.execute_management(resource_type, solution, resource,
-                                         time, "free")
+            for time in times:
+                H.execute_management(resource_type, solution, resource,
+                                     time, "free"
+                                     )
             H.say("DBG", "m_r returning True (free)")
             return True
         # End "free"
 
         # "Check" requests
         elif "check" in mode:
+            is_free = True
             for time in times:
+                if time not in GD[resource_type][solution][resource]:
+                    H.say("ERROR", "Can't find ", time,
+                          " as a valid time slot, are you forcing\n",
+                          "invalid constraint in CourseConstraints?"
+                          )
                 value = GD[resource_type][solution][resource][time]
-            if "free" in value:
+            if "free" not in value:
+                is_free = False
+            if is_free:
                 H.say("DBG", "m_r returning True (free)")
                 return True
             else:
-                H.say("DBG", "m_r returning True (not free)")
+                H.say("DBG", "m_r returning False (not free)")
                 return False
+
         else:
             H.say("ERROR", "requested resource management for",
                   " and unknown mode: ", mode)
@@ -1101,6 +1223,7 @@ class H:
             GD['S'][index][p2_course][swap_type] = temp
             return True
 
+
 #######################################################################
 # Population processing class
 #
@@ -1126,12 +1249,16 @@ class Population:
         """
         H.say("INFO", "Initializing resources...")
         # Also add instructors from InstructorConstraints to GD['I'] dict
-        # TODO: fix this, think it's overwriting good data from sample
-        # solution with blank data from incomplete IC constraints
         for ic in GD['IC']:
             if ic not in GD['I']:
                 for i_param in GD['I_PARAMS']:
-                    GD['I'][ic][i_param] = GD['IC'][ic][i_param]
+                    # TODO: fix this, think it's overwriting good data from sample
+                    if i_param == "Instructor Name":
+                        temp = []
+                        temp.append(GD['IC'][ic][i_param])
+                        GD['I'][ic][i_param] = temp
+                    else:
+                        GD['I'][ic][i_param] = GD['IC'][ic][i_param]
                 GD['I'][ic]['AlreadyAssigned'] = "false"
 
         num_resources = 0
@@ -1146,30 +1273,6 @@ class Population:
                     GD['IT'][s][i][ts] = "free"
                     num_resources += 1
             s += 1
-
-        # Now that time slot calendar is made for each R/I, populate with
-        # any forced assignments.
-        num_forces = 0
-
-        # Iterate over all course constraints and find any time slots.
-        for cc in GD['CC']:
-            course = GD['CC'][cc]['Course']
-            if 'Time Slot' in GD['CC'][cc]:
-                time = GD['CC'][cc]['Time Slot']
-                H.say("VERBOSE", "Assignment for: ",
-                      course, " at ", time
-                      )
-                num_forces += 1
-                if 'Room' in GD['CC'][cc]:
-                    room = GD['CC'][cc]['Room']
-                    eq_times = H.get_equivalent_slots(time)
-                    H.manage_resource('RT', -1, room, eq_times, "book")
-                    H.say("VERBOSE", " in room: ", room)
-                if 'Instructor' in GD['CC'][cc]:
-                    instructor = H.get_id(GD['CC'][cc]['Instructor'])
-                    eq_times = H.get_equivalent_slots(time)
-                    H.manage_resource('IT', -1, instructor, eq_times, "book")
-                    H.say("VERBOSE", " by instructor: ", instructor)
 
         # Check and make sure that all offered courses will have instructors
         courses_taught = ""
@@ -1207,9 +1310,6 @@ class Population:
                 if courses.find(c_name) != -1:
                     GD['C'][c]['Instructors'].append(i)
 
-        H.say("INFO", "stored ",
-                      num_forces, " assignments into resource calendar")
-
         H.say("INFO", "Done, created ",
               num_resources / s, " instructor/room resources for ",
               len(GD['T']), " time slots on the calendar.")
@@ -1244,103 +1344,156 @@ class Population:
         # Initialize the resources calendar
         Population.initialize_resources()
 
-        # Make assignments randomly unless assignment was already made
+        # Iterate over all course constraints and make assignments so that
+        # the constraints reserve their place in the solution.
         rs_counter = 0
+        num_forces = 0
+        # Loop over all solutions.
         while rs_counter < GD['POPULATION']:
-            H.say("DBG1", "creating solution ", rs_counter)
-            # course assignment
+            H.say("DBG1", "creating solution [", rs_counter, "]")
+            # First loop over all course constraints
             for course in GD['C']:
                 course_name = GD['C'][course]['Class Subject + Nbr']
                 course_section = GD['C'][course]['*Section']
-                H.say("DBG", "\nAssigning course: ",
-                      course, ":", course_name, ":", course_section)
-                for c_param in GD['C_PARAMS']:
-                    GD['S'][rs_counter][course][c_param] \
-                        = GD['C'][course][c_param]
+                instructor = ""
+                room = ""
+                time = ""
+                # Could save this loop by making 'cc' key a code, not integer
+                # to support direct look-up.
+                for cc in GD['CC']:
+                    c1 = (GD['CC'][cc]['Course'] in course_name)
+                    c2 = (GD['CC'][cc]['Section'] in course_section)
+                    if c1 and c2:
+                        H.say("DBG", "found constraint(s) for: ",
+                              course_name, " section ", course_section)
+                        if 'Time Slot' in GD['CC'][cc]:
+                            time = GD['CC'][cc]['Time Slot']
+                            H.say("DBG", "force time slot: ", time)
+                            # This simple if replaced make_forced_assignment.
+                            if 'Instructor' in GD['CC'][cc]:
+                                instructor = H.get_id(
+                                    GD['CC'][cc]['Instructor']
+                                    )
+                            else:
+                                instructor = H.get_resource(rs_counter,
+                                                            course,
+                                                            time,
+                                                            'I'
+                                                            )
+                                if instructor == "":
+                                    H.say("ERROR", "Instructor force error")
+                            if 'Room' in GD['CC'][cc]:
+                                room = GD['CC'][cc]['Room']
+                            else:
+                                room = H.get_resource(rs_counter,
+                                                      course,
+                                                      time,
+                                                      'R'
+                                                      )
+                                if room == "":
+                                    H.say("ERROR", "Room force error")
+                            break
+                        # This is the case where no time slot is forced.
+                        else:
+                            time_valid = False
+                            while not time_valid:
+                                # if not, will set false during while
+                                time_valid = True
+                                time = H.get_time_slot(rs_counter, course)
+                                H.say("DBG", " trying time: ", time)
+                                if 'Instructor' in GD['CC'][cc]:
+                                    instructor = H.get_id(
+                                        GD['CC'][cc]['Instructor']
+                                    )
+                                else:
+                                    instructor = H.get_resource(
+                                        rs_counter,
+                                        course,
+                                        time,
+                                        'I'
+                                        )
+                                if instructor == "":
+                                    time_valid = False
+                                if 'Room' in GD['CC'][cc]:
+                                    room = GD['CC'][cc]['Room']
+                                else:
+                                    room = H.get_resource(
+                                        rs_counter,
+                                        course,
+                                        time,
+                                        'R'
+                                        )
+                                if room == "":
+                                    time_valid = False
+                # Make the actual assignment
+                if not (instructor == "") and not (room == ""):
+                    H.say("DBG", "making forced assignments for ",
+                          instructor, ":", room, ":", time)
+                    H.make_assignment(rs_counter,
+                                      course,
+                                      instructor,
+                                      time,
+                                      "instructor"
+                                      )
+                    H.make_assignment(rs_counter,
+                                      course,
+                                      room,
+                                      time,
+                                      "room"
+                                      )
+                    num_forces += 1
+                    GD['S'][rs_counter][course]['CourseAssigned'] = True
+                else:
+                    GD['S'][rs_counter][course]['CourseAssigned'] = False
+            # H.say("DBG", "Made ", num_forces, " forced assignments")
 
-                # time slot assignment
-                time_valid = False
-                while not time_valid:
-                    time_valid = True  # if not, will set false during while
-                    time = H.get_time_slot(rs_counter, course)
-                    H.say("DBG", " trying time: ", time)
-
-                    # instructor assignment, if not assigned by constraint
-                    # not very efficient, assign instructor each time, works
-                    H.say("DBG", "  assigning instructor...")
-                    H.make_forced_assignment(course, "I", rs_counter)
-                    if GD['C'][course]['InstructorAssigned'] == 'false':
-                        # Iterate until available instructor found
-                        flag = False
-                        try_counter = 0
-                        while not flag:
-                            instructor = H.get_random_element('I', course)
-                            eq_times = H.get_equivalent_slots(time)
-                            flag = H.manage_resource('IT',
-                                                     rs_counter,
-                                                     instructor,
-                                                     eq_times,
-                                                     "check"
-                                                     )
-                            if try_counter == len(GD['C'][course]['Instructors']):
-                                H.say("DBG", "all instructors busy at ", time)
-                                time_valid = False
-                                break
-                            try_counter += 1
-                    else:
-                        # Can cheat here and not check time slots because they
-                        # were already booked during initialization.
-                        instructor = GD['S'][rs_counter][course]['Instructor']
-
-                    # room assignment, if not assigned by constraint
-                    H.make_forced_assignment(course, "R", rs_counter)
-                    if GD['C'][course]['RoomAssigned'] == 'false':
-                        flag = False
-                        try_counter = 0
-                        while not flag:
-                            room = H.get_random_element('R', course)
-                            eq_times = H.get_equivalent_slots(time)
-                            flag = H.manage_resource('RT',
-                                                     rs_counter,
-                                                     room,
-                                                     eq_times,
-                                                     "check"
-                                                     )
-                            if try_counter == len(GD['R']):
-                                H.say("DBG", "all rooms booked at ", time)
-                                time_valid = False
-                                break
-                            try_counter += 1
-                    else:
-                        room = GD['S'][rs_counter][course]['Room']
-
-                # Now actually book the resources.
-                # Instructor
-                for i_key in GD['I'][instructor]:
-                    GD['S'][rs_counter][course][i_key] \
-                        = GD['I'][instructor][i_key]
-                # TODO: fix this, if IC constraints are incomplete or incorrect
-                # they will overwrite
-                for ic_key in GD['IC'][instructor]:
-                    if GD['IC'][instructor][ic_key] != "":
-                        GD['S'][rs_counter][course][ic_key] \
-                            = GD['IC'][instructor][ic_key]
-                times = H.get_equivalent_slots(time)
-                H.say("DBG", " instructor: ", instructor)
-                H.manage_resource('IT', rs_counter, instructor,
-                                  times, "book")
-                # Room
-                GD['S'][rs_counter][course]['Facility ID'] \
-                    = GD['R'][room]['Facility ID']
-                GD['S'][rs_counter][course]['Building'] \
-                    = GD['RC'][room]['Building']
-                GD['S'][rs_counter][course]['Unit'] \
-                    = GD['C'][course]['Unit']
-                times = H.get_equivalent_slots(time)
-                H.manage_resource('RT', rs_counter, room, times, "book")
-
+            # Second loop over all remaining unassigned courses
+            for course in GD['C']:
+                if not GD['S'][rs_counter][course]['CourseAssigned']:
+                    H.say("DBG", "Randomly assigning course: ", course,
+                          " : ", course_name, " : ", course_section)
+                    time_valid = False
+                    while not time_valid:
+                        # if not, will set false during while
+                        time_valid = True
+                        time = H.get_time_slot(rs_counter, course)
+                        H.say("DBG", " trying time: ", time)
+                        if "EE 348" in course_name:
+                            H.say("DBG", "TODO DBG REMOVE")
+                        instructor = H.get_resource(rs_counter,
+                                                    course,
+                                                    time,
+                                                    'I'
+                                                    )
+                        if instructor == "":
+                            time_valid = False
+                        room = H.get_resource(rs_counter,
+                                              course,
+                                              time,
+                                              'R'
+                                              )
+                        if room == "":
+                            time_valid = False
+                # Make the actual assignment
+                if not (instructor == "") and not (room == ""):
+                    H.make_assignment(rs_counter,
+                                      course,
+                                      instructor,
+                                      time,
+                                      "instructor"
+                                      )
+                    H.make_assignment(rs_counter,
+                                      course,
+                                      room,
+                                      time,
+                                      "room"
+                                      )
+                    GD['S'][rs_counter][course]['CourseAssigned'] = True
+                else:
+                    H.say("ERROR", "not able to make random assignment: ",
+                          course, ":", instructor, ":", room)
             rs_counter += 1
-        # InputProcessor.print_database_2level('S')
+
         H.say("INFO", "Done, generated ", rs_counter, " solutions.")
 
     # Method to check feasibility of a solution
@@ -1408,6 +1561,8 @@ class Population:
                     score -= int(penalty)
 
                 # course proximity = 'Room Proximity'
+                # TODO: fix this, Unit is list, building string, values
+                # won't equal anyway
                 if GD['S'][s][c]['Unit'] != GD['S'][s][c]['Building']:
                     penalty = GD['FC']['Room Proximity']['Penalty']
                     score -= int(penalty)
@@ -1741,6 +1896,8 @@ class Population:
                         if element.find(',') != -1:
                             element = '"' + element + '"'
                         # print the actual line
+                        if s_param == "Instructor Name" and element == "":
+                            H.say("DBG", "TODO DBG REMOVE")
                         print(element.strip(), file=fh, end=end_char)
                     print(file=fh)
         H.say("INFO", "Done, returned ", solution_count, " solutions.")
@@ -1808,8 +1965,6 @@ class Main:
           )
 
     # Up next:
-    # - Debug 'freeing resource 0 at times'
-    #   - probably related to double-bookings(this looks like force assign related)
     # - make target around matrix_viewer
     # - improve fitness function (including check_feasible)
     # - work on top solution preservation, culling is messing with order
@@ -1819,7 +1974,7 @@ class Main:
     # ip.print_database_1level('RT')
     # ip.print_database_1level('IT')
     population.fitness()
-    population.return_population()
+    #population.return_population()
     H.say("INFO", "Done")
 
 if __name__ == "__Main__":
