@@ -3,6 +3,7 @@
 The flow of the program is typical of a genetic algorithm. For details, look
 at the main method. It's object oriented and written for clarity. You'll see
 3 classes:
+
 Num | Name | Purpose
 --- | --- | ---
 1 | InputProcessor |takes care of any input processing
@@ -21,10 +22,10 @@ Enumeration of types of parameters to specify:
 
 Key | Description | Notes
 --- | --- | ---
-C | Course parameters | 
-I | Instructor | 
-R | Room | 
-T | Time/day slot | 
+C | Course parameters | First key is comprised of '*Course ID' and '*Section' fields from the "ScheduleOfClassesSample.csv": 10121_1
+I | Instructor | First key is Jan user ID: rmr5
+R | Room | First keys is like: 069-106
+T | Time/day slot | First key is like: MWF_8:00_8:50, called "time_slot" within the code
 S | Solutions | For solutions, these are output parameters, not input, so this is where you can control which parameters are sent to CSV during solution output
 
 GD['*_PARAMS'] -> [param] = value
@@ -32,9 +33,9 @@ GD['*_PARAMS'] -> [param] = value
 ##### Example (will store "Facility ID" and "Wait List Cap" into GD['R'] dictionary):
 
 > GD['R_PARAMS']=[
->      "Facility ID",
->      "Wait List Cap"
->      ]
+      "Facility ID",
+      "Wait List Cap"
+      ]
 				  ]
 #### Constraints dictionaries:
 These will store the constraints specified by the parameters
@@ -69,7 +70,7 @@ GD['S_COPY'] = used as a temporary dictionary to copy data into DB manipulation,
 GD['S'] -> [solution_key] -> [course_key] -> <s_param> = value
 
 > solution_key: ( this is an integer)
-> course_key: ( this is a number comprised of '*Course ID' and '*Section' fields from the "ScheduleOfClassesSample.csv")
+  course_key: ( this is a number comprised of '*Course ID' and '*Section' fields from the "ScheduleOfClassesSample.csv")
 
 Example - this would assign 069-224 as the room for "SOFTWARE ARCHITECTURE",
           Section #1 for the 4th solution on the 'S' dictionary:
