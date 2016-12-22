@@ -58,9 +58,9 @@ import operator
 # value, have to reference the 0th element of the list to get value
 #######################################################################
 GD = dict(
-    POPULATION=4,
-    CULL_SURVIVORS=2,
-    NUM_ITERATIONS=10,
+    POPULATION=60,
+    CULL_SURVIVORS=30,
+    NUM_ITERATIONS=25,
     NUM_SOLUTIONS_TO_RETURN=1,
     MUTATION_RATE=5,
     HIGH_SCORE=20000,
@@ -737,6 +737,9 @@ class H:
         :param mode:
         :return:
         """
+        for arg in (resource_type, index, resource, time, mode):
+            if isinstance(arg, list):
+                print("DBG TODO REMOVE")
         # Check for a valid mode.
         if not (mode == "free" or mode == "busy"):
             H.say("ERROR", "Invalid mode passed to execute_management(): ",
@@ -1190,6 +1193,8 @@ class H:
                   " at times ", times
                   )
             for time in times:
+                if time not in GD[resource_type][solution][resource]:
+                    print("DBG TODO REMOVE")
                 if GD[resource_type][solution][resource][time] == "free":
                     GD[resource_type][solution][resource][time] = "busy"
                 else:
@@ -1812,14 +1817,17 @@ class Population:
 
             # Kludge because sometimes things are a list, sometimes a string
             if isinstance(room, list):
-                room_element = room[0]
-            else:
-                room_element = room
+                room = room[0]
+            if isinstance(instructor, list):
+                instructor = instructor[0]
+
+            # Free the resource, if it's a room, just free the room, otherwise
+            # need to free both room and instructor.
             if "RT" in r_type:
-                H.manage_resource(r_type, random_s, room_element, times, "free")
+                H.manage_resource(r_type, random_s, room, times, "free")
             else:
                 H.manage_resource(r_type, random_s, instructor, times, "free")
-                H.manage_resource("RT", random_s, room_element, times, "free")
+                H.manage_resource("RT", random_s, room, times, "free")
             unassigned_num += 1
 
         # Then go through each solution and re-assign random day/time/room
@@ -1836,10 +1844,9 @@ class Population:
             # Still need to check resources even though they were unassigned
             # and freed? Let's check anyway.
             if "RT" in tc:
-                H.manage_resource("IT", s, ec, times, "book")
+                H.manage_resource("RT", s, new_element, times, "book")
             else:
-                H.manage_resource("IT", s, ec, times, "book")
-                H.manage_resource("RT", s, ec, times, "book")
+                H.manage_resource("IT", s, new_element, times, "book")
             H.say("DBG", "mutation complete: ", new_element)
 
         # Report stats/return to main loop
@@ -1995,9 +2002,9 @@ class Main:
         population.cull_population()
         population.crossover()
         # Don't run mutation on last iteration
-        if iteration_count < GD['NUM_ITERATIONS'] - 1:
+        #if iteration_count < GD['NUM_ITERATIONS'] - 1:
             # idea: mutate only every nth iteration??
-            population.mutate()
+            #population.mutate()
         iteration_count += 1
     # End the loop
     H.say("INFO", "Performed ",
