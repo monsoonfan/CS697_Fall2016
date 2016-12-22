@@ -58,9 +58,9 @@ import operator
 # value, have to reference the 0th element of the list to get value
 #######################################################################
 GD = dict(
-    POPULATION=60,
-    CULL_SURVIVORS=30,
-    NUM_ITERATIONS=25,
+    POPULATION=4,
+    CULL_SURVIVORS=2,
+    NUM_ITERATIONS=10,
     NUM_SOLUTIONS_TO_RETURN=1,
     MUTATION_RATE=5,
     HIGH_SCORE=20000,
@@ -755,6 +755,10 @@ class H:
         return GD['C'][course]['Class Subject + Nbr']
 
     @staticmethod
+    def get_course_section(course):
+        return GD['C'][course]['*Section']
+
+    @staticmethod
     def get_equivalent_slots(time_slot):
         """
         Given a time_slot, returns a list of time slots which overlap on
@@ -831,10 +835,11 @@ class H:
     @staticmethod
     def get_random_element(key, course):
         """
-        method to randomly get an element off a dict, but get only
-        elements that haven't been "gotten" yet.
-        Designed for use with generate_random_solutions, and only works
-        on 'R', 'T' and 'I' dicts (they have 'AlreadyAssigned' key)
+        method to randomly get an element off 'R', 'T' or 'I' dict. Does
+        not check if the element is free or not.
+
+        Designed for use with generate_random_solutions and mutate.
+
         :param key:
         :param course:
         :return: element
@@ -868,9 +873,14 @@ class H:
                         element_id = pool[i_random]
                     H.say("DBG", "get_random_element() out(I): ", element_id)
                     return element_id
-                else:
+                elif 'R' in key:
                     H.say("DBG", "get_random_element() out(R): ", element_id)
                     return element_id
+                elif 'T' in key:
+                    H.say("DBG", "get_random_element() out(T): ", element_id)
+                    return element_id
+                else:
+                    H.say("ERROR", "get_random_element() invalid key: ", key)
             else:
                 counter += 1
 
@@ -1124,6 +1134,7 @@ class H:
                     H.say("ERROR", "Trying to force assign busy resource:",
                           instructor, " @ ", time,
                           "\nCheck our CourseConstraints.")
+                GD['S'][solution][course]['InstructorForced'] = True
                 H.say("DBG", "make_forced_assignment()",
                       "force assign instructor: ", instructor)
                 return instructor
@@ -1151,6 +1162,7 @@ class H:
                                                  "check"
                                                  )
                         # Error out if room not free
+                        GD['S'][solution][course]['RoomForced'] = True
                         if not flag:
                             H.say("ERROR",
                                   "Trying to force assign busy room: ",
@@ -1176,7 +1188,7 @@ class H:
         :param resource: room or instructor
         :param times: list of times in time slot format (MWF_08:00_09:15)
         :param mode: book, free, or check
-        :return: 0 or 1
+        :return: True or False
         """
         H.say("DBG", "manage_resource() in: ", resource_type,
               ":", solution, ":", resource, ":", times, ":", mode)
@@ -1411,6 +1423,7 @@ class Population:
                               course_name, " section ", course_section)
                         if 'Time Slot' in GD['CC'][cc]:
                             time = GD['CC'][cc]['Time Slot']
+                            GD['S'][rs_counter][course]['TimeForced'] = True
                             H.say("DBG", "force time slot: ", time)
                             # This will get forced assignments.
                             instructor = H.get_resource(rs_counter,
@@ -1762,11 +1775,6 @@ class Population:
         ###########
         # Go through each solution and un-assign a percentage of the day/time
         # and room elements randomly.
-        unassigned_num = 0
-        unassigned_dict = collections.defaultdict(
-            lambda: collections.defaultdict(
-            )
-        )
 
         # Get the total number of elements so that mutation rate can
         # be tracked. Multiply number of solutions * number of courses
@@ -1774,83 +1782,161 @@ class Population:
         width = len(GD['S'])
         height = len(GD['S'][0])
         total_elements = width * height * 2
+        num_mutated = 0
 
         # Perform the un-assignment
-        while unassigned_num < (GD['MUTATION_RATE']/100) * total_elements:
-            # get random element and un-assign, update count
+        while num_mutated < (GD['MUTATION_RATE']/100) * total_elements:
             random_s = GD['HIGH_FITNESS_INDEX']
-            # preserve the top solution always: TODO fix this
+
+            # TODO fix this: preserve the top solution always
             while random_s == GD['HIGH_FITNESS_INDEX']:
                 random_s = H.get_random_number('S')
+
+            # get random element and mutate
             random_c = H.get_random_course('S', random_s)
             random_e = H.get_random_course_element()
-            # skip if it was assigned by forced assignment
+            # TODO: verify: skip if it was assigned by forced assignment
             if H.check_forced(random_s, random_c, random_e):
                 H.say("DBG1", "skipping mutation of forced assignment")
                 continue
+
+            # Process the mutation for random element
+            original_instructor = \
+                GD['S'][random_s][random_c]['Instructor Jan/Dana ID']
+            original_room = GD['S'][random_s][random_c]['Facility ID']
+            orig_time = GD['S'][random_s][random_c]['Time Slot']
+            orig_times = H.get_equivalent_slots(orig_time)
             element = GD['S'][random_s][random_c][random_e]
-            instructor = GD['S'][random_s][random_c]['Instructor Jan/Dana ID']
-            room = GD['S'][random_s][random_c]['Facility ID']
-            if "Facility ID" in random_e:
-                # only free the room resource in this case
-                r_type = "RT"
-                e_type = "R"
-            elif "Time Slot" in random_e:
-                # In this case, need to free both the room and instructor,
-                # at the current time slot, then the assignment can try to
-                # find a new time slot for the room/instructor pair
-                r_type = "IT"
-                e_type = "T"
-            else:
-                H.say("ERROR", "Unrecognized type code ", random_e)
-            unassigned_dict[unassigned_num]['Solution'] = random_s
-            unassigned_dict[unassigned_num]['Course'] = random_c
-            unassigned_dict[unassigned_num]['Element Type'] = random_e
-            unassigned_dict[unassigned_num]['Element Type Code'] = e_type
-            unassigned_dict[unassigned_num]['Resource Type Code'] = r_type
-            unassigned_dict[unassigned_num]['Value'] = element[0]
-            H.say("DBG", "mutating ", element, " at s:c ",
-                  random_s, ":", random_c)
-            times = H.get_equivalent_slots(
-                GD['S'][random_s][random_c]['Time Slot']
-            )
+            H.say("DBG", "mutating ", element, " at s:c ", random_s, ":",
+                  random_c)
 
             # Kludge because sometimes things are a list, sometimes a string
-            if isinstance(room, list):
-                room = room[0]
-            if isinstance(instructor, list):
-                instructor = instructor[0]
-
-            # Free the resource, if it's a room, just free the room, otherwise
-            # need to free both room and instructor.
-            if "RT" in r_type:
-                H.manage_resource(r_type, random_s, room, times, "free")
+            if isinstance(original_room, list):
+                room = original_room[0]
+                original_room = original_room[0]
             else:
-                H.manage_resource(r_type, random_s, instructor, times, "free")
-                H.manage_resource("RT", random_s, room, times, "free")
-            unassigned_num += 1
-
-        # Then go through each solution and re-assign random day/time/room
-        # for all un-assigned elements.
-        for u in unassigned_dict:
-            s = unassigned_dict[u]['Solution']
-            c = unassigned_dict[u]['Course']
-            et = unassigned_dict[u]['Element Type']
-            ec = unassigned_dict[u]['Element Type Code']
-            tc = unassigned_dict[u]['Resource Type Code']
-            new_element = H.get_random_element(ec, c)
-            GD['S'][s][c][et] = new_element
-            times = H.get_equivalent_slots(GD['S'][s][c]['Time Slot'])
-            # Still need to check resources even though they were unassigned
-            # and freed? Let's check anyway.
-            if "RT" in tc:
-                H.manage_resource("RT", s, new_element, times, "book")
+                room = original_room
+            if isinstance(original_instructor, list):
+                instructor = original_instructor[0]
+                original_instructor = original_instructor[0]
             else:
-                H.manage_resource("IT", s, new_element, times, "book")
-            H.say("DBG", "mutation complete: ", new_element)
+                instructor = original_instructor
+
+            # Only mutate the room resource in this case.
+            if "Facility ID" in random_e:
+                r_type = "RT"
+                # Try to get a new room at the same time as before.
+                room = H.get_resource(random_s,
+                                      random_c,
+                                      orig_time,
+                                      'R',
+                                      ""
+                                      )
+                if room != "":
+                    # No need to check before booking, get_resource() does that
+                    H.manage_resource(r_type,
+                                      random_s,
+                                      room,
+                                      orig_times,
+                                      "book"
+                                      )
+                    H.say("DBG", "mutated rooms: ", original_room,
+                          "->", room, ". Freeing original room...")
+                    H.manage_resource(r_type,
+                                      random_s,
+                                      original_room,
+                                      orig_times,
+                                      "free"
+                                      )
+                    num_mutated += 1
+                else:
+                    H.say("DBG", "Skipping element: ", element,
+                          ", not able to find another room at same time")
+                    continue
+
+            # To mutate time slot, have to find one where both instructor
+            # and room are free.
+            elif "Time Slot" in random_e:
+                r_type = "IT"
+                time_valid = False
+                time_try = 0
+                max_tries = len(GD['T'])
+                # Iterate over available times to try and find one that works
+                # for both instructor and room.
+                while not time_valid:
+                    time_valid = True
+                    new_time = H.get_random_element("T", random_c)
+                    new_times = H.get_equivalent_slots(new_time)
+                    H.say("DBG", "trying time ", new_time,
+                          " for instructor ", instructor,
+                          ", time_try = ", time_try)
+                    # Try for the instructor.
+                    i_flag = H.manage_resource(r_type,
+                                               random_s,
+                                               instructor,
+                                               new_times,
+                                               "check"
+                                               )
+                    if not i_flag:
+                        time_valid = False  # Doesn't work, will try next time
+                    # Works for instructor.
+                    else:
+                        # Try for room.
+                        H.say("DBG", "trying time ", new_time,
+                              " for room ", room,
+                              ", time_try = ", time_try)
+                        r_flag = H.manage_resource("RT",
+                                                   random_s,
+                                                   room,
+                                                   new_times,
+                                                   "check"
+                                                   )
+                        # Doesn't work for room, try next time for both
+                        if not r_flag:
+                            time_valid = False
+                        # Success, found new time slot, book 'em!
+                        else:
+                            H.manage_resource(r_type,
+                                              random_s,
+                                              instructor,
+                                              new_times,
+                                              "book"
+                                              )
+                            H.manage_resource("RT",
+                                              random_s,
+                                              room,
+                                              new_times,
+                                              "book"
+                                              )
+                            H.say("DBG", "mutated times: ", orig_time,
+                                  "->", new_time, ". Freeing instructor ",
+                                  "and room at original time...")
+                            # Free both room and instructor from old time.
+                            H.manage_resource(r_type,
+                                              random_s,
+                                              instructor,
+                                              orig_times,
+                                              "free"
+                                              )
+                            H.manage_resource("RT",
+                                              random_s,
+                                              room,
+                                              orig_times,
+                                              "free"
+                                              )
+                            num_mutated += 1
+                            break
+                    time_try += 1
+                    if time_try == max_tries:
+                        H.say("DBG", "Skipping time swap, could not find ",
+                              "time that works for both ", original_room,
+                              " and ", original_instructor)
+                        break
+            else:
+                H.say("ERROR", "Unrecognized type code ", random_e)
 
         # Report stats/return to main loop
-        H.say("LOG", "Mutated ", unassigned_num,
+        H.say("LOG", "Mutated ", num_mutated,
               " elements of the solution")
 
     # Culling
@@ -2002,9 +2088,9 @@ class Main:
         population.cull_population()
         population.crossover()
         # Don't run mutation on last iteration
-        #if iteration_count < GD['NUM_ITERATIONS'] - 1:
+        if iteration_count < GD['NUM_ITERATIONS'] - 1:
             # idea: mutate only every nth iteration??
-            #population.mutate()
+            population.mutate()
         iteration_count += 1
     # End the loop
     H.say("INFO", "Performed ",
