@@ -18,3 +18,4 @@ Data/ScheduleSampleHeader.txt
 Data/InstructorConstraintsFull.csv
 Data/CourseConstraints.short.csv
 Data/CourseConstraints.long.csv
+Data/CourseConstraints.long_trimmed.csv

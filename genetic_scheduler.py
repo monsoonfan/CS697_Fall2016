@@ -58,8 +58,8 @@ import operator
 # value, have to reference the 0th element of the list to get value
 #######################################################################
 GD = dict(
-    POPULATION=8,
-    CULL_SURVIVORS=4,
+    POPULATION=4,
+    CULL_SURVIVORS=2,
     NUM_ITERATIONS=10,
     NUM_SOLUTIONS_TO_RETURN=1,
     MUTATION_RATE=5,
@@ -636,6 +636,38 @@ class H:
             sys.exit(2)
 
     @staticmethod
+    def help(*args):
+        if args[0] == 1:
+            H.say("ERROR",
+                  "Exceeded max tries, this means an open ",
+                  "time could not be found for an instructor from: ",
+                  GD['C'][args[1]]['Instructors'], " to teach ",
+                  args[2], " section ", args[3],
+                  "\nTry running again to get different ",
+                  "random seed. If problem persists, please\n",
+                  "consider *Constraints.csv files and the ",
+                  "following:\n",
+                  "1) are there enough instructors for each course?\n",
+                  "2) too many forced assignments:\n",
+                  "  - at same time\n",
+                  "  - for given instructor(s)\n"
+                  )
+        # H.help(2, course, instructor, room, course_name, course_section)
+        if args[0] == 2:
+            H.say("ERROR", "not able to make random assignment: \n",
+                  "course: ", args[1], "\n",
+                  "instructor: ", args[2], "\n",
+                  "room: ", args[3], "\n",
+                  "course_name: ", args[4], "\n",
+                  "section: ", args[5], "\n",
+                  "Look at which parameter above is an empty string. ",
+                  "That should indicate the problem.\n",
+                  "Consider if this course has too many sections ",
+                  "for the number of instructors who teach it.\n",
+                  "Also consider if the instructors who can teach ",
+                  "it are overloaded relative to other instructors.")
+
+    @staticmethod
     def copy_solution(from_key, to_key, from_db, to_db):
         """
         Helper to perform the copy of all key/value pairs for a
@@ -1020,29 +1052,25 @@ class H:
         """
         # Instructor + ( time + course params <- only do these once)
         if "instructor" in mode:
-            if resource == 'jdp85':
-                H.say("DBG", "TODO DBG REMOVE")
+            # Course params
+            for c_param in GD['C_PARAMS']:
+                GD['S'][solution][course][c_param] = GD['C'][course][c_param]
+
+            # Instructor params
             for i_key in GD['I'][resource]:
-                if i_key == "Instructor Name" and GD['I'][resource][i_key] == "":
-                    H.say("DBG", "TODO DBG REMOVE")
                 GD['S'][solution][course][i_key] \
                     = GD['I'][resource][i_key]
-            for ic_key in GD['IC'][resource]:
-                if GD['IC'][resource][ic_key] != "":
-                    GD['S'][solution][course][ic_key] \
-                        = GD['IC'][resource][ic_key]
+            GD['S'][solution][course]['Instructor Building'] = \
+                GD['IC'][resource]['Instructor Building']
             times = H.get_equivalent_slots(time)
             H.say("DBG", " resource: ", resource)
             H.manage_resource('IT', solution, resource,
                               times, "book")
+
             # Time
             for t_key in GD['T'][time]:
                 GD['S'][solution][course][t_key] = GD['T'][time][t_key]
             GD['S'][solution][course]['Time Slot'] = time
-
-            # Course params
-            for c_param in GD['C_PARAMS']:
-                GD['S'][solution][course][c_param] = GD['C'][course][c_param]
 
         # Room
         if "room" in mode:
@@ -1162,11 +1190,11 @@ class H:
                   " at times ", times
                   )
             for time in times:
-                #if GD[resource_type][solution][resource][time] == "free":
-                GD[resource_type][solution][resource][time] = "busy"
-                #else:
-                #H.say("ERROR", "Trying to book a busy resource!\n",
-                #resource, ":", time)
+                if GD[resource_type][solution][resource][time] == "free":
+                    GD[resource_type][solution][resource][time] = "busy"
+                else:
+                    H.say("ERROR", "Trying to book a busy resource!\n",
+                          resource, ":", time, ":", solution)
             H.say("DBG", "manage_resource() returning True (busy)")
             return True
         # end "Book"
@@ -1264,13 +1292,9 @@ class Population:
         for ic in GD['IC']:
             if ic not in GD['I']:
                 for i_param in GD['I_PARAMS']:
-                    # TODO: fix this, think it's overwriting good data from sample
-                    if i_param == "Instructor Name":
-                        temp = []
-                        temp.append(GD['IC'][ic][i_param])
-                        GD['I'][ic][i_param] = temp
-                    else:
-                        GD['I'][ic][i_param] = GD['IC'][ic][i_param]
+                    temp = []
+                    temp.append(GD['IC'][ic][i_param])
+                    GD['I'][ic][i_param] = temp
                 GD['I'][ic]['AlreadyAssigned'] = "false"
 
         num_resources = 0
@@ -1430,12 +1454,10 @@ class Population:
                                 if room == "":
                                     time_valid = False
                                 if time_try == max_tries:
-                                    H.say("WARN",
-                                          "Exceeded max tries, forced ",
-                                          "assignments will not take ",
-                                          "effect for this solution.\n",
-                                          "TODO1: kill later through culling")
-                                    break
+                                    # Exit with message
+                                    H.help(1, course,
+                                           course_name, course_section)
+
                 # Make the actual assignment
                 if not (instructor == "") and not (room == ""):
                     H.say("DBG", "making forced assignments for ",
@@ -1456,7 +1478,7 @@ class Population:
                     GD['S'][rs_counter][course]['CourseAssigned'] = True
                 else:
                     GD['S'][rs_counter][course]['CourseAssigned'] = False
-            # H.say("DBG", "Made ", num_forces, " forced assignments")
+            H.say("DBG", "Made ", num_forces, " forced assignments")
 
             # Second loop over all remaining unassigned courses
             for course in GD['C']:
@@ -1466,7 +1488,7 @@ class Population:
                 room = ""
                 time = ""
                 if not GD['S'][rs_counter][course]['CourseAssigned']:
-                    H.say("DBG", "Randomly assigning course: ", course,
+                    H.say("DBG", "\nRandomly assigning course: ", course,
                           " : ", course_name, " : ", course_section)
                     time_valid = False
                     time_try = 0
@@ -1494,31 +1516,29 @@ class Population:
                         if room == "":
                             time_valid = False
                         if time_try == max_tries:
-                            H.say("WARN",
-                                  "Exceeded max tries, forced ",
-                                  "assignments will not take ",
-                                  "effect for this solution.\n",
-                                  "TODO1: kill later through culling")
-                            break
-                # Make the actual assignment
-                if not (instructor == "") and not (room == ""):
-                    H.make_assignment(rs_counter,
-                                      course,
-                                      instructor,
-                                      time,
-                                      "instructor"
-                                      )
-                    H.make_assignment(rs_counter,
-                                      course,
-                                      room,
-                                      time,
-                                      "room"
-                                      )
-                    GD['S'][rs_counter][course]['CourseAssigned'] = True
-                else:
-                    H.say("WARN", "not able to make random assignment: \n",
-                          course, ":", instructor, ":", room,
-                          "TODO2: kill later through culling")
+                            # Exit with message
+                            H.help(1, course,
+                                   course_name, course_section)
+                    # Make the actual assignment
+                    if not (instructor == "") and not (room == ""):
+                        H.make_assignment(rs_counter,
+                                          course,
+                                          instructor,
+                                          time,
+                                          "instructor"
+                                          )
+                        H.make_assignment(rs_counter,
+                                          course,
+                                          room,
+                                          time,
+                                          "room"
+                                          )
+                        GD['S'][rs_counter][course]['CourseAssigned'] = True
+
+                    else:
+                        # Exit with message
+                        H.help(2, course, instructor, room,
+                               course_name, course_section)
             rs_counter += 1
 
         H.say("INFO", "Done, generated ", rs_counter, " solutions.")
@@ -1575,10 +1595,6 @@ class Population:
             score = GD['HIGH_SCORE']
             for c in GD['S'][s]:
                 # set some vars that might get used multiple times
-                if 'Facility ID' not in GD['S'][s][c]:
-                    print("DBG TODO REMOVE")
-                    score = 0
-                    break
                 if len(GD['S'][s][c]['Facility ID']) == 1:
                     room = GD['S'][s][c]['Facility ID'][0]
                 else:
@@ -1864,7 +1880,6 @@ class Population:
         H.say("LOG", "Done, preserved ", preserved_count, " of population")
 
     @staticmethod
-    # TODO: format of this method is corrupted, extra whitespace all over
     def return_population():
         """
         The big method to print all data for a solution to CSV the old
@@ -1927,8 +1942,6 @@ class Population:
                         if element.find(',') != -1:
                             element = '"' + element + '"'
                         # print the actual line
-                        if s_param == "Instructor Name" and element == "":
-                            H.say("DBG", "TODO DBG REMOVE")
                         print(element.strip(), file=fh, end=end_char)
                     print(file=fh)
         H.say("INFO", "Done, returned ", solution_count, " solutions.")
