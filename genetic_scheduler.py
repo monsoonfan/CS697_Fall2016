@@ -771,26 +771,53 @@ class H:
         return False
 
     @staticmethod
-    def execute_management(resource_type, index, resource, time, mode):
+    def execute_management(resource_type, index, resource, day, time, mode):
         """
         Wrapper method to make error checking modular and re-usable
 
         :param resource_type:
         :param index:
         :param resource:
+        :param day:
         :param time:
         :param mode:
         :return:
         """
+        # Variables
+        return_value = False
+
         # Check for a valid mode.
-        if not (mode == "free" or mode == "busy"):
+        if not ("free" in mode or "book" in mode):
             H.say("ERROR", "Invalid mode passed to execute_management(): ",
                   mode)
         # Check that the resource actually exists
         if resource not in GD[resource_type][index]:
             H.say("ERROR", "Trying to ", mode,
                   " resource that doesn't exist: ", resource)
-        GD[resource_type][index][resource][time] = mode
+
+        # Book or free the resource, based on input mode
+        if "book" in mode:
+            if day not in GD[resource_type][index][resource]:
+                GD[resource_type][index][resource][day] = []
+            GD[resource_type][index][resource][day].append(time)
+            return_value = True
+        else:
+            if day not in GD[resource_type][index][resource]:
+                H.say("DBG", "tried to free resource ", resource,
+                      " on(", day, ") @ ", time, " but that day\n",
+                      "is fully open, better check.")
+                return return_value
+            if time in GD[resource_type][index][resource][day]:
+                GD[resource_type][index][resource][day].remove(time)
+            else:
+                H.say("DBG", "tried to free resource ", resource,
+                      " on ", time, " but it's already free")
+                return_value = False
+            if len(GD[resource_type][index][resource][day]) == 0:
+                # Delete this entry so "check" runs faster
+                del GD[resource_type][index][resource][day]
+                return_value = True
+        return return_value
 
     @staticmethod
     def get_course_name(course):
@@ -799,53 +826,6 @@ class H:
     @staticmethod
     def get_course_section(course):
         return GD['C'][course]['*Section']
-
-    @staticmethod
-    def get_equivalent_slots(time_slot):
-        """
-        Given a time_slot, returns a list of time slots which overlap on
-        at least one day.
-
-        :param time_slot:  MWF_9:10_10:00
-        :return: 'W_8:00_10:00', 'F_8:00_10:00', 'MWF_9:10_10:00', 'M_8:00_10:00'
-        """
-        H.say("DBG", "get_equivalent_slots() in: ", time_slot)
-        # Variables
-        return_value = []
-
-        # Convert the input and do error checking. Atomize the input first.
-        atoms = H.atomize_time_slot(time_slot)
-        for a in atoms:
-            e = H.get_time_slot_elements(a)
-            start_time = int(H.get_time(e[1]))
-            end_time = int(H.get_time(e[2]))
-            if start_time >= end_time:
-                H.say("ERROR", "get_equivalent_slots(): ",
-                      "start time greater than end time")
-            for t in (start_time, end_time):
-                if t < 0 or t > 2400:
-                    H.say("ERROR", "get_equivalent_slots(): invalid time: ", t)
-
-        # Do equivalent lookups for the start time and append them.
-        for a in atoms:
-            e = H.get_time_slot_elements(a)
-            for ts in GD['T']:
-                ts_atoms = H.atomize_time_slot(ts)
-                for ts_a in ts_atoms:
-                    ts_e = H.get_time_slot_elements(ts_a)
-                    # enumerate the conditions over which a time slot is equivalent
-                    c1 = H.get_time(e[1]) >= H.get_time(ts_e[1])
-                    c2 = H.get_time(e[1]) <= H.get_time(ts_e[2])
-                    c3 = H.get_time(e[2]) >= H.get_time(ts_e[1])
-                    c4 = H.get_time(e[2]) <= H.get_time(ts_e[2])
-                    c5 = H.check_day_equivalence(e[0], ts_e[0])
-                    if ((c1 and c2) or (c3 and c4)) and c5:
-                        if ts_a not in return_value:
-                            return_value.append(ts_a)
-
-        # Do equivalent lookups for the end time and append them.
-        H.say("DBG", "get_equivalent_slots() out: ", return_value)
-        return return_value
 
     @staticmethod
     def get_random_number(hash_key):
@@ -1030,11 +1010,10 @@ class H:
                     return ""
                     break
                 resource = H.get_random_element(code, course)
-                eq_times = H.get_equivalent_slots(time)
                 flag = H.manage_resource(check_code,
                                          rs_counter,
                                          resource,
-                                         eq_times,
+                                         time,
                                          "check"
                                          )
                 try_counter += 1
@@ -1121,10 +1100,9 @@ class H:
                     = GD['I'][resource][i_key]
             GD['S'][solution][course]['Instructor Building'] = \
                 GD['IC'][resource]['Instructor Building']
-            times = H.get_equivalent_slots(time)
             H.say("DBG", " resource: ", resource)
             H.manage_resource('IT', solution, resource,
-                              times, "book")
+                              time, "book")
 
             # Time
             if time not in GD['T']:
@@ -1147,8 +1125,7 @@ class H:
                 = GD['RC'][resource]['Building']
             GD['S'][solution][course]['Unit'] \
                 = GD['C'][course]['Unit']
-            times = H.get_equivalent_slots(time)
-            H.manage_resource('RT', solution, resource, times, "book")
+            H.manage_resource('RT', solution, resource, time, "book")
 
     @staticmethod
     def make_forced_assignment(solution, course, time, db_type, cc_key):
@@ -1171,7 +1148,6 @@ class H:
         if cc_key in GD['CC']:
             forced += 1
             cc_course = GD['CC'][cc_key]['Course']
-            eq_times = H.get_equivalent_slots(time)
 
             # Deal with instructors
             if db_type == "I":
@@ -1179,7 +1155,7 @@ class H:
                 flag = H.manage_resource('IT',
                                          solution,
                                          instructor,
-                                         eq_times,
+                                         time,
                                          "check"
                                          )
                 # Error out if resource busy, this would indicate that
@@ -1212,7 +1188,7 @@ class H:
                         flag = H.manage_resource('RT',
                                                  solution,
                                                  room,
-                                                 eq_times,
+                                                 time,
                                                  "check"
                                                  )
                         # Error out if room not free
@@ -1232,81 +1208,113 @@ class H:
         return ""
 
     @staticmethod
-    def manage_resource(resource_type, solution, resource, times, mode):
+    def manage_resource(resource_type, solution, resource, time, mode):
         """
-        Helper to book or free a given resource at a given time.
-        Also added functionality to check on the resource
+        Assume "check" was performed before booking
 
         :param resource_type: RT or IT
         :param solution: number key for the solution on GD['S'] dict
         :param resource: room or instructor
-        :param times: list of times in time slot format (MWF_08:00_09:15)
+        :param time: time, in time slot format (MWF_08:00_09:15)
         :param mode: book, free, or check
         :return: True or False
         """
         H.say("DBG", "manage_resource() in: ", resource_type,
-              ":", solution, ":", resource, ":", times, ":", mode)
+              ":", solution, ":", resource, ":", time, ":", mode)
 
-        # Error checkin on arguments.
+        # Error checking on arguments.
         if not ('RT' in resource_type or 'IT' in resource_type):
             H.say("ERROR", "manage_resource() received illegal resource_type: ",
                   resource_type)
+        if not (mode == "free" or mode == "book" or mode == "check"):
+            H.say("ERROR", "Invalid mode passed to manage_resource(): ",
+                  mode)
 
-        # determine the mode and process the request
-        # Handle the "Book" requests
-        if "book" in mode:
-            H.say("VERBOSE", "booking resource ", resource,
-                  " at times ", times
+        # Atomize the time slot.
+        atoms = H.atomize_time_slot(time)
+        return_value = False  # Default false should get me looking in here
+
+        # Make sure requested time slot is valid.
+        if time not in GD['T']:
+            H.say("ERROR", "Can't find ", time,
+                  " as a valid time slot, are you forcing\n",
+                  "invalid constraint in CourseConstraints?"
                   )
-            for time in times:
-                if GD[resource_type][solution][resource][time] == "free":
-                    GD[resource_type][solution][resource][time] = "busy"
+
+        # Process the request on each atom in the time slot.
+        for a in atoms:
+            a_elements = H.get_time_slot_elements(a)
+            day = a_elements[0]
+            start = H.get_time(a_elements[1])
+            end = H.get_time(a_elements[2])
+
+            # Handle the "Book" requests
+            if "book" in mode:
+                H.say("VERBOSE", "booking resource ", resource,
+                      " at time: ", a
+                      )
+                if H.execute_management(resource_type, solution,
+                                        resource, day, a, "book"
+                                        ):
+                    H.say("DBG", "manage_resource() returning True (busy)")
+                    return_value = True
                 else:
                     H.say("ERROR", "Trying to book a busy resource!\n",
                           resource, ":", time, ":", solution)
-            H.say("DBG", "manage_resource() returning True (busy)")
-            return True
-        # end "Book"
+            # end "Book"
 
-        # Handle the "Free" requests
-        elif "free" in mode:
-            H.say("VERBOSE", "freeing resource ", resource,
-                  " at times ", times
-                  )
-            # need to book or free times for all solutions if -1 is passed in
-            for time in times:
-                H.execute_management(resource_type, solution, resource,
-                                     time, "free"
-                                     )
-            H.say("DBG", "manage_resource() returning True (free)")
-            return True
-        # End "free"
+            # Handle the "Free" requests
+            elif "free" in mode:
+                H.say("VERBOSE", "freeing resource ", resource,
+                      " at time: ", a
+                      )
+                if H.execute_management(resource_type, solution,
+                                        resource, day, time, "free"
+                                        ):
+                    H.say("DBG", "manage_resource() returning True (free)")
+                    return_value = True
+                else:
+                    # This is just a temp sanity check, remove it.
+                    H.say("DBG", "Resource already free, better check:\n",
+                          resource, ":", time, ":", solution)
+            # End "free"
 
-        # "Check" requests
-        elif "check" in mode:
-            is_free = True
-            for time in times:
-                if time not in GD[resource_type][solution][resource]:
-                    H.say("ERROR", "Can't find ", time,
-                          " as a valid time slot, are you forcing\n",
-                          "invalid constraint in CourseConstraints?"
-                          )
-                # In theory, all times here would be free/busy together
-                value = GD[resource_type][solution][resource][time]
-                if "free" not in value:
-                    is_free = False
-                    break
-            if is_free:
-                H.say("DBG", "manage_resource() returning True (free)")
-                return True
-            else:
-                H.say("DBG", "manage_resource() returning False (not free)")
-                return False
+            # "Check" requests
+            elif "check" in mode:
+                if day not in GD[resource_type][solution][resource]:
+                    return_value = True
+                    continue
+                else:
+                    # List of time_slots already booked for resource
+                    booked_times = GD[resource_type][solution][resource][day]
+                    for bt in booked_times:
+                        bt_elements = H.get_time_slot_elements(bt)
+                        bt_day = bt_elements[0]
+                        bt_start = H.get_time(bt_elements[1])
+                        bt_end = H.get_time(bt_elements[2])
+                        # enumerate the conditions over which a time slot
+                        # is equivalent
+                        c1 = ((start >= bt_start) and (start <= bt_end))
+                        c2 = ((end >= bt_start) and (end <= bt_end))
+                        c3 = ((start < bt_start) and (end > bt_end))
+                        if c1 or c2 or c3:
+                            H.say("DBG", "check busy: ", c1, "<>", c2,
+                                  "<>", c3, " a vs bt: ", a, " <> ", bt,
+                                  "\n   start: ", start, "    end:", end,
+                                  "\nbt_start: ", bt_start, " bt_end:", bt_end,
+                                  "\n     day: ", day, " bt_day: ", bt_day
+                                  )
+                            return_value = False
+                            break
+                        else:
+                            H.say("DBG", "free")
+                            return_value = True
 
+        if return_value:
+            H.say("DBG", "manage_resource() returning True")
         else:
-            H.say("ERROR", "requested resource management for",
-                  " and unknown mode: ", mode)
-            return False  # isn't reached but quiets PyCharm
+            H.say("DBG", "manage_resource() returning False")
+        return return_value
 
     @staticmethod
     def swap_elements(index, p1_course, p2_course, swap_type):
@@ -1366,20 +1374,7 @@ class Population:
                     GD['I'][ic][i_param] = temp
                 GD['I'][ic]['AlreadyAssigned'] = "false"
 
-        # Iterate over each time slot, and create resources for R and I
-        num_resources = 0
-        s = 0
-        while s < GD['POPULATION']:
-            for ts in GD['T']:
-                atoms = H.atomize_time_slot(ts)
-                for a in atoms:
-                    for r in GD['R']:
-                        GD['RT'][s][r][a] = "free"
-                        num_resources += 1
-                    for i in GD['I']:
-                        GD['IT'][s][i][a] = "free"
-                        num_resources += 1
-            s += 1
+        # Create any IT/RT style tables here, if needed.
 
         # Check and make sure that all offered courses will have instructors
         courses_taught = ""
@@ -1418,10 +1413,6 @@ class Population:
                 # so do this the long way.
                 if courses.find(c_name) != -1:
                     GD['C'][c]['Instructors'].append(i)
-
-        H.say("INFO", "Done, created ",
-              num_resources / s, " instructor/room resources for ",
-              len(GD['T']), " time slots on the calendar.")
 
     @staticmethod
     def pre_order_courses():
@@ -1899,7 +1890,6 @@ class Population:
                 GD['S'][random_s][random_c]['Instructor Jan/Dana ID']
             original_room = GD['S'][random_s][random_c]['Facility ID']
             orig_time = GD['S'][random_s][random_c]['Time Slot']
-            orig_times = H.get_equivalent_slots(orig_time)
             element = GD['S'][random_s][random_c][random_e]
             H.say("DBG", "mutating ", element, " at s:c ", random_s, ":",
                   random_c)
@@ -1931,7 +1921,7 @@ class Population:
                     H.manage_resource(r_type,
                                       random_s,
                                       room,
-                                      orig_times,
+                                      orig_time,
                                       "book"
                                       )
                     H.say("DBG", "mutated rooms: ", original_room,
@@ -1939,7 +1929,7 @@ class Population:
                     H.manage_resource(r_type,
                                       random_s,
                                       original_room,
-                                      orig_times,
+                                      orig_time,
                                       "free"
                                       )
                     num_mutated += 1
@@ -1960,7 +1950,6 @@ class Population:
                 while not time_valid:
                     time_valid = True
                     new_time = H.get_random_element("T", random_c)
-                    new_times = H.get_equivalent_slots(new_time)
                     H.say("DBG", "trying time ", new_time,
                           " for instructor ", instructor,
                           ", time_try = ", time_try)
@@ -1968,7 +1957,7 @@ class Population:
                     i_flag = H.manage_resource(r_type,
                                                random_s,
                                                instructor,
-                                               new_times,
+                                               new_time,
                                                "check"
                                                )
                     if not i_flag:
@@ -1982,7 +1971,7 @@ class Population:
                         r_flag = H.manage_resource("RT",
                                                    random_s,
                                                    room,
-                                                   new_times,
+                                                   new_time,
                                                    "check"
                                                    )
                         # Doesn't work for room, try next time for both
@@ -1993,13 +1982,13 @@ class Population:
                             H.manage_resource(r_type,
                                               random_s,
                                               instructor,
-                                              new_times,
+                                              new_time,
                                               "book"
                                               )
                             H.manage_resource("RT",
                                               random_s,
                                               room,
-                                              new_times,
+                                              new_time,
                                               "book"
                                               )
                             H.say("DBG", "mutated times: ", orig_time,
@@ -2009,13 +1998,13 @@ class Population:
                             H.manage_resource(r_type,
                                               random_s,
                                               instructor,
-                                              orig_times,
+                                              orig_time,
                                               "free"
                                               )
                             H.manage_resource("RT",
                                               random_s,
                                               room,
-                                              orig_times,
+                                              orig_time,
                                               "free"
                                               )
                             num_mutated += 1
