@@ -85,6 +85,7 @@ GD = dict(
     DB_2LEVEL_PARAMS=["C", "I", "R", "S", "T", "CC"],
     DB_1LEVEL_PARAMS=["FC", "RC", "IC"],
     C=collections.defaultdict(lambda: collections.defaultdict()),  # courses
+    CO=collections.OrderedDict(),
     I=collections.defaultdict(lambda: collections.defaultdict()),
     R=collections.defaultdict(lambda: collections.defaultdict()),  # rooms
     T=collections.defaultdict(lambda: collections.defaultdict()),  # times
@@ -102,7 +103,7 @@ GD = dict(
         lambda: collections.defaultdict()
     )),
     CD=collections.defaultdict(int),  # stores sorted solution keys
-    CC=collections.defaultdict(lambda: collections.defaultdict()),
+    CC=collections.defaultdict(lambda: collections.OrderedDict()),
     FC=collections.defaultdict(lambda: collections.defaultdict()),
     RC=collections.defaultdict(lambda: collections.defaultdict()),
     IC=collections.defaultdict(lambda: collections.defaultdict()),
@@ -826,8 +827,8 @@ class H:
                     H.say("ERROR", "get_equivalent_slots(): invalid time: ", t)
 
         # Do equivalent lookups for the start time and append them.
-        atoms = H.atomize_time_slot(time_slot)
         for a in atoms:
+            e = H.get_time_slot_elements(a)
             for ts in GD['T']:
                 ts_atoms = H.atomize_time_slot(ts)
                 for ts_a in ts_atoms:
@@ -1186,7 +1187,7 @@ class H:
                 if not flag:
                     H.say("ERROR", "Trying to force assign busy resource:",
                           instructor, " @ ", time,
-                          "\nCheck our CourseConstraints.")
+                          "\nCheck your CourseConstraints.")
                 GD['S'][solution][course]['InstructorForced'] = True
                 H.say("DBG", "make_forced_assignment()",
                       "force assign instructor: ", instructor)
@@ -1423,6 +1424,43 @@ class Population:
               len(GD['T']), " time slots on the calendar.")
 
     @staticmethod
+    def pre_order_courses():
+        """
+        Create a pre-ordered dict of courses so we can use it to make
+        forced assignments for forced time slots first.
+
+        :return:
+        """
+        # First pass, get all courses that have time slots forced.
+        for c in GD['C']:
+            course_name = GD['C'][c]['Class Subject + Nbr']
+            course_section = GD['C'][c]['*Section']
+            cc_key = course_name[0] + "_" + course_section[0]
+            if cc_key in GD['CC']:
+                c1 = ('Course' in GD['CC'][cc_key])
+                c2 = ('Section' in GD['CC'][cc_key])
+                c3 = ('Time' in GD['CC'][cc_key])
+                if c1 and c2 and c3:
+                    GD['CO'][c] = ""
+        # Second pass, place all courses that have some type of
+        # forced assignment, but not the ones we already placed.
+        for c in GD['C']:
+            course_name = GD['C'][c]['Class Subject + Nbr']
+            course_section = GD['C'][c]['*Section']
+            cc_key = course_name[0] + "_" + course_section[0]
+            if cc_key in GD['CC']:
+                c1 = ('Course' in GD['CC'][cc_key])
+                c2 = ('Section' in GD['CC'][cc_key])
+                c3 = (c in GD['CO'])
+                if c1 and c2 and not c3:
+                    GD['CO'][c] = ""
+        # Third pass, place all remaining courses.
+        for c in GD['C']:
+            c3 = (c in GD['CO'])
+            if not c3:
+                GD['CO'][c] = ""
+
+    @staticmethod
     def generate_random_solutions():
         """
         Method to generate the random seed of solutions
@@ -1451,7 +1489,7 @@ class Population:
         H.say("INFO", "Generating set of random solutions...")
         # Initialize the resources calendar
         Population.initialize_resources()
-        #Population.pre_order_courses()
+        Population.pre_order_courses()
 
         # Iterate over all course constraints and make assignments so that
         # the constraints reserve their place in the solution.
@@ -1461,7 +1499,7 @@ class Population:
         while rs_counter < GD['POPULATION']:
             H.say("INFO", "creating solution [", rs_counter, "]")
             # First loop over all course constraints
-            for course in GD['C']:
+            for course in GD['CO']:
                 course_name = GD['C'][course]['Class Subject + Nbr']
                 course_section = GD['C'][course]['*Section']
                 instructor = ""
@@ -1553,7 +1591,7 @@ class Population:
             H.say("DBG", "Made ", num_forces, " forced assignments")
 
             # Second loop over all remaining unassigned courses
-            for course in GD['C']:
+            for course in GD['CO']:
                 course_name = GD['C'][course]['Class Subject + Nbr']
                 course_section = GD['C'][course]['*Section']
                 instructor = ""
