@@ -446,7 +446,8 @@ class InputProcessor:
                         # make it easier to directly pull values later for
                         # ones that don't need to have a random unique key
                         if base_key == 'CC':
-                            GD[base_key][row_num][csv_param] = value
+                            i_key = row['Course'] + "_" + row['Section']
+                            GD[base_key][i_key][csv_param] = value
                         else:
                             H.say("VERBOSE", "storing ", value, " under",
                                   "[", base_key, "]",
@@ -780,9 +781,6 @@ class H:
         :param mode:
         :return:
         """
-        for arg in (resource_type, index, resource, time, mode):
-            if isinstance(arg, list):
-                print("DBG TODO REMOVE")
         # Check for a valid mode.
         if not (mode == "free" or mode == "busy"):
             H.say("ERROR", "Invalid mode passed to execute_management(): ",
@@ -813,9 +811,6 @@ class H:
         H.say("DBG", "get_equivalent_slots() in: ", time_slot)
         # Variables
         return_value = []
-
-        if time_slot == "TTh_12:45_14:00":
-            print("DBG TODO REMOVE")
 
         # Convert the input and do error checking. Atomize the input first.
         atoms = H.atomize_time_slot(time_slot)
@@ -1456,7 +1451,7 @@ class Population:
         H.say("INFO", "Generating set of random solutions...")
         # Initialize the resources calendar
         Population.initialize_resources()
-        Population.preorder_courses()
+        #Population.pre_order_courses()
 
         # Iterate over all course constraints and make assignments so that
         # the constraints reserve their place in the solution.
@@ -1474,66 +1469,66 @@ class Population:
                 time = ""
                 # Could save this loop by making 'cc' key a code, not integer
                 # to support direct look-up.
-                for cc in GD['CC']:
-                    c1 = (GD['CC'][cc]['Course'] in course_name)
-                    c2 = (GD['CC'][cc]['Section'] in course_section)
-                    if c1 and c2:
-                        H.say("DBG", "found constraint(s) for: ",
-                              course_name, " section ", course_section)
-                        if 'Time Slot' in GD['CC'][cc]:
-                            time = GD['CC'][cc]['Time Slot']
-                            GD['S'][rs_counter][course]['TimeForced'] = True
-                            H.say("DBG", "force time slot: ", time)
-                            # This will get forced assignments.
+                cc_key = course_name[0] + "_" + course_section[0]
+                c1 = ('Course' in GD['CC'][cc_key])
+                c2 = ('Section' in GD['CC'][cc_key])
+                if c1 and c2:
+                    H.say("DBG", "found constraint(s) for: ",
+                          course_name, " section ", course_section)
+                    if 'Time Slot' in GD['CC'][cc_key]:
+                        time = GD['CC'][cc_key]['Time Slot']
+                        GD['S'][rs_counter][course]['TimeForced'] = True
+                        H.say("DBG", "force time slot: ", time)
+                        # This will get forced assignments.
+                        instructor = H.get_resource(rs_counter,
+                                                    course,
+                                                    time,
+                                                    'I',
+                                                    cc_key
+                                                    )
+                        if instructor == "":
+                            H.say("ERROR", "Instructor force error")
+                        # This will get forced assignments.
+                        room = H.get_resource(rs_counter,
+                                              course,
+                                              time,
+                                              'R',
+                                              cc_key
+                                              )
+                        if room == "":
+                            H.say("ERROR", "Room force error")
+                            break
+                    # This is the case where no time slot is forced.
+                    else:
+                        time_valid = False
+                        time_try = 0
+                        max_tries = len(GD['T'])
+                        while not time_valid:
+                            # if not, will set false during while
+                            time_valid = True
+                            time = H.get_time_slot(rs_counter, course)
+                            time_try += 1
+                            H.say("DBG", " trying time: ", time)
                             instructor = H.get_resource(rs_counter,
                                                         course,
                                                         time,
                                                         'I',
-                                                        cc
+                                                        cc_key
                                                         )
                             if instructor == "":
-                                H.say("ERROR", "Instructor force error")
-                            # This will get forced assignments.
+                                time_valid = False
                             room = H.get_resource(rs_counter,
                                                   course,
                                                   time,
                                                   'R',
-                                                  cc
+                                                  cc_key
                                                   )
                             if room == "":
-                                H.say("ERROR", "Room force error")
-                            break
-                        # This is the case where no time slot is forced.
-                        else:
-                            time_valid = False
-                            time_try = 0
-                            max_tries = len(GD['T'])
-                            while not time_valid:
-                                # if not, will set false during while
-                                time_valid = True
-                                time = H.get_time_slot(rs_counter, course)
-                                time_try += 1
-                                H.say("DBG", " trying time: ", time)
-                                instructor = H.get_resource(rs_counter,
-                                                            course,
-                                                            time,
-                                                            'I',
-                                                            cc
-                                                            )
-                                if instructor == "":
-                                    time_valid = False
-                                room = H.get_resource(rs_counter,
-                                                      course,
-                                                      time,
-                                                      'R',
-                                                      cc
-                                                      )
-                                if room == "":
-                                    time_valid = False
-                                if time_try == max_tries:
-                                    # Exit with message
-                                    H.help(1, course,
-                                           course_name, course_section)
+                                time_valid = False
+                            if time_try == max_tries:
+                                # Exit with message
+                                H.help(1, course,
+                                       course_name, course_section)
 
                 # Make the actual assignment
                 if not (instructor == "") and not (room == ""):
