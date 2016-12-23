@@ -668,6 +668,32 @@ class H:
                   "it are overloaded relative to other instructors.")
 
     @staticmethod
+    def atomize_time_slot(time_slot):
+        """
+        Helper return a list of enumerated time slots for each day:
+
+        MWF_8:00_8:50 becomes {M_8:00_8:50, W_8:00_8:50, F_8:00_8:50}
+
+        :param time_slot:
+        :return:
+        """
+        H.say("DBG", "atomize_time_slot() in: ", time_slot)
+        # Variables
+        atomized_slots = []
+
+        ts = time_slot.replace("Th", "H")
+
+        e = H.get_time_slot_elements(ts)
+        days = e[0]
+
+        for d in days:
+            # Change Th back, maybe should leave it as H or R?
+            d_r = d.replace("H", "Th")
+            atomized_slots.append(d_r + "_" + e[1] + "_" + e[2])
+
+        return atomized_slots
+
+    @staticmethod
     def copy_solution(from_key, to_key, from_db, to_db):
         """
         Helper to perform the copy of all key/value pairs for a
@@ -689,6 +715,10 @@ class H:
         """
         Helper to check if days overlap between reference and check args
 
+        Make each day atomic. MWF will return M, W, F. M will return only M.
+        Changed from MWF returning MWF and M returning MWF
+
+
         Example: MW would overlap with MWF time slot, and vice versa, but
                  would not overlap with F time slot.
                  TTh would not overlap with MW or MWF or F, but would
@@ -699,13 +729,23 @@ class H:
         :return: True/False
         """
         # Swap out "Th" for "H" for easy comparisons
+        # So we have M T W H F
         r = reference.replace("Th", "H")
         c = check.replace("Th", "H")
 
+        # TODO: can remove the error checking when this is verified...
+        if len(r) != 1:
+            H.say("ERROR", "Incorrect argument passed to ",
+                  "check_day_equivalence(r): ", r)
+        if len(c) != 1:
+            H.say("ERROR", "Incorrect argument passed to ",
+                  "check_day_equivalence(c): ", c)
+
         # Iterate over elements of check and see if they occur in reference
-        for cc in c:
-            if cc in r:
-                return True
+        if c == r:
+            H.say("DBG", "check_day_equivalence, c: ", c,
+                  " equals r: ", r, ", returning true")
+            return True
 
         # Default case, return false
         return False
@@ -771,31 +811,33 @@ class H:
         # Variables
         return_value = []
 
-        # Convert the input and do error checking.
-        e = H.get_time_slot_elements(time_slot)
-        start_time = int(H.get_time(e[1]))
-        end_time = int(H.get_time(e[2]))
-        if len(e) != 3:
-            H.say("ERROR", "get_equivalent_slots(): invalid time slot: ",
-                  time_slot)
-        if start_time >= end_time:
-            H.say("ERROR", "get_equivalent_slots(): ",
-                  "start time greater than end time")
-        for t in (start_time, end_time):
-            if t < 0 or t > 2400:
-                H.say("ERROR", "get_equivalent_slots(): invalid time: ", t)
+        # Convert the input and do error checking. Atomize the input first.
+        atoms = H.atomize_time_slot(time_slot)
+        for a in atoms:
+            e = H.get_time_slot_elements(a)
+            start_time = int(H.get_time(e[1]))
+            end_time = int(H.get_time(e[2]))
+            if start_time >= end_time:
+                H.say("ERROR", "get_equivalent_slots(): ",
+                      "start time greater than end time")
+            for t in (start_time, end_time):
+                if t < 0 or t > 2400:
+                    H.say("ERROR", "get_equivalent_slots(): invalid time: ", t)
 
         # Do equivalent lookups for the start time and append them.
         for ts in GD['T']:
-            ts_e = H.get_time_slot_elements(ts)
-            # enumerate the conditions over which a time slot is equivalent
-            c1 = H.get_time(e[1]) >= H.get_time(ts_e[1])
-            c2 = H.get_time(e[1]) <= H.get_time(ts_e[2])
-            c3 = H.get_time(e[2]) >= H.get_time(ts_e[1])
-            c4 = H.get_time(e[2]) <= H.get_time(ts_e[2])
-            c5 = H.check_day_equivalence(e[0], ts_e[0])
-            if ((c1 and c2) or (c3 and c4)) and c5:
-                return_value.append(ts)
+            ts_atoms = H.atomize_time_slot(ts)
+            for ts_a in ts_atoms:
+                ts_e = H.get_time_slot_elements(ts_a)
+                # enumerate the conditions over which a time slot is equivalent
+                c1 = H.get_time(e[1]) >= H.get_time(ts_e[1])
+                c2 = H.get_time(e[1]) <= H.get_time(ts_e[2])
+                c3 = H.get_time(e[2]) >= H.get_time(ts_e[1])
+                c4 = H.get_time(e[2]) <= H.get_time(ts_e[2])
+                c5 = H.check_day_equivalence(e[0], ts_e[0])
+                if ((c1 and c2) or (c3 and c4)) and c5:
+                    if ts_a not in return_value:
+                        return_value.append(ts_a)
 
         # Do equivalent lookups for the end time and append them.
         H.say("DBG", "get_equivalent_slots() out: ", return_value)
@@ -1081,6 +1123,14 @@ class H:
                               times, "book")
 
             # Time
+            if time not in GD['T']:
+                name = GD['C'][course]['Class Subject + Nbr']
+                section = GD['C'][course]['*Section']
+                H.say("ERROR", "Trying to assign non-existent time slot ",
+                      time, " for course: ", name, " section: ", section,
+                      "\nAre you forcing ",
+                      "invalid constraint in CourseConstraints?"
+                      )
             for t_key in GD['T'][time]:
                 GD['S'][solution][course][t_key] = GD['T'][time][t_key]
             GD['S'][solution][course]['Time Slot'] = time
@@ -1205,8 +1255,6 @@ class H:
                   " at times ", times
                   )
             for time in times:
-                if time not in GD[resource_type][solution][resource]:
-                    print("DBG TODO REMOVE")
                 if GD[resource_type][solution][resource][time] == "free":
                     GD[resource_type][solution][resource][time] = "busy"
                 else:
@@ -1314,17 +1362,19 @@ class Population:
                     GD['I'][ic][i_param] = temp
                 GD['I'][ic]['AlreadyAssigned'] = "false"
 
-        num_resources = 0
         # Iterate over each time slot, and create resources for R and I
+        num_resources = 0
         s = 0
         while s < GD['POPULATION']:
             for ts in GD['T']:
-                for r in GD['R']:
-                    GD['RT'][s][r][ts] = "free"
-                    num_resources += 1
-                for i in GD['I']:
-                    GD['IT'][s][i][ts] = "free"
-                    num_resources += 1
+                atoms = H.atomize_time_slot(ts)
+                for a in atoms:
+                    for r in GD['R']:
+                        GD['RT'][s][r][a] = "free"
+                        num_resources += 1
+                    for i in GD['I']:
+                        GD['IT'][s][i][a] = "free"
+                        num_resources += 1
             s += 1
 
         # Check and make sure that all offered courses will have instructors
@@ -1633,6 +1683,8 @@ class Population:
                     score -= int(penalty)
 
                 # time of day = 'Time of day'
+                if 'Start Time' not in GD['S'][s][c]:
+                    print("DBG TODO REMOVE")
                 start_time = H.get_time(GD['S'][s][c]['Start Time'])
                 if start_time < 900 or start_time > 1700:
                     penalty = GD['FC']['Room Proximity']['Penalty']

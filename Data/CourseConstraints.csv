@@ -1,3 +1,4 @@
 Course,Section,Instructor,Room,Time Slot,Prereq,Coreq,Semester
-CS 122L,1,"Jacobs,Steven Miles",069-106,T_8:00_10:30,,,Fall/Spring
+CS 122L,1,"Jacobs,Steven Miles",069-106,M_8:00_10:00,,,Fall/Spring
+CS 122L,2,"Jacobs,Steven Miles",069-106,W_8:00_10:00,,,Fall/Spring
 CS 249,1,"Kelley,Patrick Edward",,,CS136,,Fall/Spring
