@@ -36,6 +36,9 @@
 # - Do we have fixed rooms/schedules - labs, etc where the place/time fixed?
 # - Or how about where the room is blacked out?
 # - Presentation of "Top solution preservation"
+# - What's with the Th_14:20_17:40 overlapping Th_17:30_20:00?? Hacked that
+#   in the sample solutions spreadsheet. Made them all Th_14:20_16:50, which
+#   does exist for Tuesday.
 #
 # Scratchpad:
 # - crossover, compare technique where parents breed exclusively vs non-excl.
@@ -811,6 +814,9 @@ class H:
         # Variables
         return_value = []
 
+        if time_slot == "TTh_12:45_14:00":
+            print("DBG TODO REMOVE")
+
         # Convert the input and do error checking. Atomize the input first.
         atoms = H.atomize_time_slot(time_slot)
         for a in atoms:
@@ -825,19 +831,21 @@ class H:
                     H.say("ERROR", "get_equivalent_slots(): invalid time: ", t)
 
         # Do equivalent lookups for the start time and append them.
-        for ts in GD['T']:
-            ts_atoms = H.atomize_time_slot(ts)
-            for ts_a in ts_atoms:
-                ts_e = H.get_time_slot_elements(ts_a)
-                # enumerate the conditions over which a time slot is equivalent
-                c1 = H.get_time(e[1]) >= H.get_time(ts_e[1])
-                c2 = H.get_time(e[1]) <= H.get_time(ts_e[2])
-                c3 = H.get_time(e[2]) >= H.get_time(ts_e[1])
-                c4 = H.get_time(e[2]) <= H.get_time(ts_e[2])
-                c5 = H.check_day_equivalence(e[0], ts_e[0])
-                if ((c1 and c2) or (c3 and c4)) and c5:
-                    if ts_a not in return_value:
-                        return_value.append(ts_a)
+        atoms = H.atomize_time_slot(time_slot)
+        for a in atoms:
+            for ts in GD['T']:
+                ts_atoms = H.atomize_time_slot(ts)
+                for ts_a in ts_atoms:
+                    ts_e = H.get_time_slot_elements(ts_a)
+                    # enumerate the conditions over which a time slot is equivalent
+                    c1 = H.get_time(e[1]) >= H.get_time(ts_e[1])
+                    c2 = H.get_time(e[1]) <= H.get_time(ts_e[2])
+                    c3 = H.get_time(e[2]) >= H.get_time(ts_e[1])
+                    c4 = H.get_time(e[2]) <= H.get_time(ts_e[2])
+                    c5 = H.check_day_equivalence(e[0], ts_e[0])
+                    if ((c1 and c2) or (c3 and c4)) and c5:
+                        if ts_a not in return_value:
+                            return_value.append(ts_a)
 
         # Do equivalent lookups for the end time and append them.
         H.say("DBG", "get_equivalent_slots() out: ", return_value)
@@ -1448,6 +1456,7 @@ class Population:
         H.say("INFO", "Generating set of random solutions...")
         # Initialize the resources calendar
         Population.initialize_resources()
+        Population.preorder_courses()
 
         # Iterate over all course constraints and make assignments so that
         # the constraints reserve their place in the solution.
