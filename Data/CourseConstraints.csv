@@ -13,15 +13,15 @@ CS 126L,1,"Vanderberg,Margaret Lisa Hamill",069-106,M_8:00_10:00,,CS126,Fall
 CS 126L,2,"Vanderberg,Margaret Lisa Hamill",069-106,W_14:20_16:50,,CS126,Fall
 CS 126L,3,"Vanderberg,Margaret Lisa Hamill",069-106,W_17:30_20:00,,CS126,Fall
 CS 126L,4,"Vanderberg,Margaret Lisa Hamill",069-106,T_14:20_16:50,,CS126,Fall
-CS 136,1,"Elwakil,Mohamed Medhat",,,CS126,,Spring
-CS 136,2,"Elwakil,Mohamed Medhat",,,CS126,,Spring
-CS 136L,1,"Elwakil,Mohamed Medhat",069-106,T_11:10_13:40,,,
-CS 136L,2,"Elwakil,Mohamed Medhat",069-106,F_8:00_10:00,,,
-CS 136L,3,"Elwakil,Mohamed Medhat",069-106,Th_11:10_13:40,,,
-CS 249,1,"Kelley,Patrick Edward",,,CS136,,Fall/Spring
-EE 188,1,"Grubbs,Elmer Andrew",,,,,Fall
 EE 188L,A,"Scott,David Robin",069-234,M_14:20_16:50,,,Fall
 EE 188L,B,"Scott,David Robin",069-234,T_14:20_16:50,,,Fall
 EE 188L,C,"Scott,David Robin",069-234,T_17:30_20:00,,,Fall
 EE 188L,D,"Heynssens,Julie",069-234,Th_14:20_16:50,,,Fall
 EE 188L,E,"Zhou,Xi",069-234,W_14:20_16:50,,,Fall
+CS 136L,1,"Elwakil,Mohamed Medhat",069-106,T_11:10_13:40,,,
+CS 136L,2,"Elwakil,Mohamed Medhat",069-106,F_8:00_10:00,,,
+CS 136L,3,"Elwakil,Mohamed Medhat",069-106,Th_11:10_13:40,,,
+CS 136,1,"Elwakil,Mohamed Medhat",,MW_12:45_14:00,CS126,,Spring
+CS 136,2,"Elwakil,Mohamed Medhat",,TTh_14:20_15:35,CS126,,Spring
+CS 249,1,"Kelley,Patrick Edward",,,CS136,,Fall/Spring
+EE 188,1,"Grubbs,Elmer Andrew",,,,,Fall

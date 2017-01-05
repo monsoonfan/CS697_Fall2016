@@ -61,8 +61,8 @@ import operator
 # value, have to reference the 0th element of the list to get value
 #######################################################################
 GD = dict(
-    POPULATION=4,
-    CULL_SURVIVORS=2,
+    POPULATION=50,
+    CULL_SURVIVORS=25,
     NUM_ITERATIONS=10,
     NUM_SOLUTIONS_TO_RETURN=1,
     MUTATION_RATE=5,
