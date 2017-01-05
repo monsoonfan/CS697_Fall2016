@@ -61,13 +61,13 @@ import operator
 # value, have to reference the 0th element of the list to get value
 #######################################################################
 GD = dict(
-    POPULATION=50,
-    CULL_SURVIVORS=25,
-    NUM_ITERATIONS=10,
+    POPULATION=500,
+    CULL_SURVIVORS=250,
+    NUM_ITERATIONS=25,
     NUM_SOLUTIONS_TO_RETURN=1,
     MUTATION_RATE=5,
     HIGH_SCORE=20000,
-    INFO_LEVEL=3,  # see Helper.say()
+    INFO_LEVEL=1,  # see Helper.say()
     ROOM_CAPACITY_WASTE_THRESHOLD_PCT=25,
     UNIMPLEMENTED_BELOW_THIS_DUMMY_VAR=True,
     GENE_SWAP_PCT=50,
@@ -1420,9 +1420,13 @@ class Population:
         Create a pre-ordered dict of courses so we can use it to make
         forced assignments for forced time slots first.
 
+        TODO: doing this wrong, go through ordered CC, then can place all of those
+              first, in the order they appear in CourseConstraints
+
         :return:
         """
-        # First pass, get all courses that have time slots forced.
+        # First pass, get all courses that have instructor/room/time slots forced.
+        H.say("DBG", "Pre-order courses pass 1:")
         for c in GD['C']:
             course_name = GD['C'][c]['Class Subject + Nbr']
             course_section = GD['C'][c]['*Section']
@@ -1430,11 +1434,30 @@ class Population:
             if cc_key in GD['CC']:
                 c1 = ('Course' in GD['CC'][cc_key])
                 c2 = ('Section' in GD['CC'][cc_key])
-                c3 = ('Time' in GD['CC'][cc_key])
-                if c1 and c2 and c3:
+                c3 = ('Time Slot' in GD['CC'][cc_key])
+                c4 = ('Instructor' in GD['CC'][cc_key])
+                c5 = ('Room' in GD['CC'][cc_key])
+                if c1 and c2 and c3 and c4 and c5:
+                    H.say("DBG", " placing course ", cc_key, " as ", c)
                     GD['CO'][c] = ""
-        # Second pass, place all courses that have some type of
-        # forced assignment, but not the ones we already placed.
+        # Second pass, instructor and time slot
+        # but not the ones we already placed
+        H.say("DBG", "Pre-order courses pass 2:")
+        for c in GD['C']:
+            course_name = GD['C'][c]['Class Subject + Nbr']
+            course_section = GD['C'][c]['*Section']
+            cc_key = course_name[0] + "_" + course_section[0]
+            if cc_key in GD['CC']:
+                c1 = ('Course' in GD['CC'][cc_key])
+                c2 = ('Section' in GD['CC'][cc_key])
+                c3 = ('Time Slot' in GD['CC'][cc_key])
+                c4 = ('Instructor' in GD['CC'][cc_key])
+                c5 = (c in GD['CO'])
+                if c1 and c2 and c3 and c4 and not c5:
+                    H.say("DBG", " placing course ", cc_key, " as ", c)
+                    GD['CO'][c] = ""
+        # Third pass, anything else from CourseConstraints net yet placed
+        H.say("DBG", "Pre-order courses pass 3:")
         for c in GD['C']:
             course_name = GD['C'][c]['Class Subject + Nbr']
             course_section = GD['C'][c]['*Section']
@@ -1444,11 +1467,14 @@ class Population:
                 c2 = ('Section' in GD['CC'][cc_key])
                 c3 = (c in GD['CO'])
                 if c1 and c2 and not c3:
+                    H.say("DBG", " placing course ", cc_key, " as ", c)
                     GD['CO'][c] = ""
-        # Third pass, place all remaining courses.
+        # Final pass, place all remaining courses.
+        H.say("DBG", "Pre-order courses final pass:")
         for c in GD['C']:
             c3 = (c in GD['CO'])
             if not c3:
+                H.say("DBG", " placing course ", c)
                 GD['CO'][c] = ""
 
     @staticmethod
